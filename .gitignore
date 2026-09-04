@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Data files
+*.h5
+*.parquet
+*.csv
+*.pkl
+*.npy
+*.npz
+*.feather
+
+# Logs
+*.log
+selector.log
+prompt_cache.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+rdagent-env/
+
+# Git ignore folder (large data)
+git_ignore_folder/
+
+# Results
+*_results*
+*_report*
+*_analysis*
+strategy_comparison.png
+mixed_strategy_backtest_visualization.png
+momentum_backtest_visualization.png
+visualize_results.py
+
+# Model outputs
+outputs/
+
+# System
+.DS_Store
+Thumbs.db
