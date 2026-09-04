@@ -56,3 +56,10 @@ outputs/
 # System
 .DS_Store
 Thumbs.db
+.env
+.python-version
+RD-Agent/
+factor_ranking_*.txt
+log/
+package-lock.json
+package.json
