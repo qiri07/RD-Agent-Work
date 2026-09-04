@@ -9,13 +9,14 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-# Webhook URL（优先级：环境变量 > 配置文件 > 硬编码默认值）
-FEISHU_WEBHOOK_URL = os.getenv(
-    "FEISHU_WEBHOOK_URL",
-    "https://open.feishu.cn/open-apis/bot/v2/hook/d816f6f1-1224-4e04-beaa-6308eb7d178d",
-)
+# Webhook URL 和项目名称统一从 config 模块读取
+from config import FEISHU_WEBHOOK_URL, FEISHU_PROJECT_NAME
 
-PROJECT_NAME = "RD-Agent 因子分析"
+PROJECT_NAME = FEISHU_PROJECT_NAME
+
+# 飞书推送参数
+FEISHU_TIMEOUT_SEC = 10          # Webhook 请求超时（秒）
+FEISHU_FID_TRUNC_LEN = 20        # factor_id 显示截断长度
 
 
 def _build_payload(text: str) -> dict:
@@ -54,7 +55,7 @@ def send_feishu(text: str, verbose: bool = True) -> bool:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=FEISHU_TIMEOUT_SEC) as resp:
             body = resp.read().decode("utf-8")
             result = json.loads(body)
             if result.get("code") != 0:
@@ -83,7 +84,7 @@ def send_ic_results(ic_df, top_n: int = 10) -> bool:
     lines = [f"📊 **因子 IC 分析完成** (共 {len(ic_df)} 个因子)", ""]
 
     for rank, (_, row) in enumerate(top.iterrows(), 1):
-        fid = row["factor_id"][:20]
+        fid = row["factor_id"][:FEISHU_FID_TRUNC_LEN]
         ic = row["IC_5d"]
         t = row["IC_t_5d"]
         pos = row["IC_pos_5d"]

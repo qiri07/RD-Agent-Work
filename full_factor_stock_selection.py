@@ -18,10 +18,12 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path(".").resolve()))
 from feishu_notify import send_top_stocks
 
-WORKSPACE = Path("git_ignore_folder/RD-Agent_workspace")
-SOURCE_DATA = Path("git_ignore_folder/factor_implementation_source_data/daily_pv.parquet")
-TOP_K = 30          # 每轮选多少只
-OUTPUT_FILE = Path("full_factor_stock_selection.csv")
+import config as cfg
+
+WORKSPACE = cfg.RDAGENT_WORKSPACE
+SOURCE_DATA = cfg.DAILY_PV_PQ
+TOP_K = cfg.STOCK_TOP_K_DEFAULT
+OUTPUT_FILE = cfg.FULL_STOCK_SELECTION_CSV
 
 
 # ─── 工具函数 ───────────────────────────────────────────────

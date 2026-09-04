@@ -49,8 +49,10 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
 # ===================== 配置 =====================
-WORKSPACE     = Path("git_ignore_folder/RD-Agent_workspace")
-SOURCE_DEBUG  = Path("git_ignore_folder/factor_implementation_source_data_debug")
+import config as cfg
+
+WORKSPACE     = cfg.RDAGENT_WORKSPACE
+SOURCE_DEBUG  = cfg.FACTOR_SOURCE_DEBUG
 CLEAN_H5      = SOURCE_DEBUG / "daily_pv_clean.h5"
 RETURNS_H5    = SOURCE_DEBUG / "returns_5d.h5"
 RETURNS_PQ    = SOURCE_DEBUG / "returns_5d.parquet"

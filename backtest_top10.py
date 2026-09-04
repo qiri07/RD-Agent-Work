@@ -13,19 +13,27 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
-WORKSPACE = Path("git_ignore_folder/RD-Agent_workspace")
-SOURCE_PQ = Path("git_ignore_folder/factor_implementation_source_data/daily_pv.parquet")
+import config as cfg
 
-# ─── 参数 ───────────────────────────────────────────────────
-TOP_K = 10
-HOLD_DAYS = 5
-INITIAL_CAPITAL = 1_000_000
-COMMISSION_RATE = 0.0003
-SLIPPAGE_RATE = 0.001
-MIN_TRADE_VALUE = 10_000
-SPLIT_DATE_PREV = pd.Timestamp("2026-09-01")
-SPLIT_DATE_CURR = pd.Timestamp("2026-09-02")
-SPLIT_RATIO_THRESHOLD = 3.0
+WORKSPACE = cfg.RDAGENT_WORKSPACE
+SOURCE_PQ = cfg.DAILY_PV_PQ
+
+# ─── 参数（统一从 config 读取，支持环境变量覆盖）──────────────
+TOP_K = cfg.BACKTEST_TOP_K
+HOLD_DAYS = cfg.BACKTEST_HOLD_DAYS
+INITIAL_CAPITAL = cfg.BACKTEST_INITIAL_CAPITAL
+COMMISSION_RATE = cfg.BACKTEST_COMMISSION_RATE
+SLIPPAGE_RATE = cfg.BACKTEST_SLIPPAGE_RATE
+MIN_TRADE_VALUE = cfg.BACKTEST_MIN_TRADE_VALUE
+SPLIT_RATIO_THRESHOLD = cfg.BACKTEST_SPLIT_RATIO_THRESHOLD
+
+# A股交易单位：每手 100 股
+ASTOCK_LOT_SIZE = 100
+
+# 拆分日期：可通过环境变量 BACKTEST_SPLIT_DATE_PREV / BACKTEST_SPLIT_DATE_CURR 覆盖
+_split_prev, _split_curr = cfg.get_split_dates()
+SPLIT_DATE_PREV = pd.Timestamp(_split_prev) if _split_prev else pd.Timestamp("2026-09-01")
+SPLIT_DATE_CURR = pd.Timestamp(_split_curr) if _split_curr else pd.Timestamp("2026-09-02")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -187,12 +195,12 @@ def run_backtest(prices, scores, top_k=10, hold_days=5):
         invest = min(value_target, cash * 0.99)
         if invest < MIN_TRADE_VALUE:
             return
-        shares = int(invest / buy_price / 100) * 100
+        shares = int(invest / buy_price / ASTOCK_LOT_SIZE) * ASTOCK_LOT_SIZE
         if shares <= 0:
             return
         cost = shares * buy_price * (1 + COMMISSION_RATE + SLIPPAGE_RATE)
         if cost > cash:
-            shares = int(cash / buy_price / 100) * 100
+            shares = int(cash / buy_price / ASTOCK_LOT_SIZE) * ASTOCK_LOT_SIZE
             if shares <= 0:
                 return
             cost = shares * buy_price * (1 + COMMISSION_RATE + SLIPPAGE_RATE)
@@ -366,14 +374,7 @@ def main():
     # 分阶段统计
     print("\n📊 分阶段统计:")
     print("-" * 70)
-    periods = [
-        ("2022-09 ~ 2022-12", "2022-09-01", "2022-12-31"),
-        ("2023", "2023-01-01", "2023-12-31"),
-        ("2024", "2024-01-01", "2024-12-31"),
-        ("2025", "2025-01-01", "2025-12-31"),
-        ("2026-01~08", "2026-01-01", "2026-08-31"),
-        ("2026-09", "2026-09-01", "2026-09-02"),
-    ]
+    periods = cfg.BACKTEST_PERIODS
     for name, start, end in periods:
         sub = nav.loc[start:end]
         if len(sub) < 2:

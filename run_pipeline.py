@@ -22,9 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# 项目路径
-BASE = Path("/run/media/onai/MyDisk/Work/RD-Agent-Work")
-sys.path.insert(0, str(BASE))
+import config as cfg
 
 from feishu_notify import send_combined_report
 
@@ -36,7 +34,7 @@ def run_ic_analysis():
     print("=" * 70)
     
     result = subprocess.run(
-        [sys.executable, str(BASE / "run_ic_fast.py")],
+        [sys.executable, str(cfg.PROJECT_ROOT / "run_ic_fast.py")],
         cwd=str(BASE),
         capture_output=False,
     )
@@ -69,8 +67,8 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
         print(f"    {i}. {fid[:30]}  IC={row['IC_5d']:+.4f}")
     
     # 加载因子数据
-    WS = BASE / "git_ignore_folder" / "RD-Agent_workspace"
-    SRC_PQ = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
+    WS = cfg.PROJECT_ROOT / "git_ignore_folder" / "RD-Agent_workspace"
+    SRC_PQ = cfg.PROJECT_ROOT / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
     
     print("\n  加载因子数据...")
     factor_dict = {}
@@ -140,7 +138,7 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     out_df = out_df[["rank", "instrument", "composite_score"] + 
                     [c for c in out_df.columns if c not in ["rank", "instrument", "composite_score"]]]
     
-    out_csv = BASE / "top10_stocks_new.csv"
+    out_csv = cfg.PROJECT_ROOT / "top10_stocks_new.csv"
     out_df.to_csv(out_csv, index=False)
     print(f"\n  💾 已保存: {out_csv}")
     
@@ -183,8 +181,8 @@ def main():
     
     if args.feishu_only:
         # 仅推送模式
-        ic_path = Path(args.ic_results) if args.ic_results else BASE / "ic_scan_results_new.csv"
-        stocks_path = Path(args.stocks) if args.stocks else BASE / "top10_stocks_new.csv"
+        ic_path = Path(args.ic_results) if args.ic_results else cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
+        stocks_path = Path(args.stocks) if args.stocks else cfg.PROJECT_ROOT / "top10_stocks_new.csv"
         
         if not ic_path.exists():
             print(f"❌ IC 结果文件不存在: {ic_path}")
@@ -205,7 +203,7 @@ def main():
             
     elif args.stocks_only:
         # 只选股
-        ic_path = BASE / "ic_scan_results_new.csv"
+        ic_path = cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
         if not ic_path.exists():
             print(f"❌ IC 结果文件不存在，请先运行 IC 分析: {ic_path}")
             return 1
@@ -222,7 +220,7 @@ def main():
             print("❌ IC 分析失败，终止流程")
             return 1
         
-        ic_df = pd.read_csv(BASE / "ic_scan_results_new.csv")
+        ic_df = pd.read_csv(cfg.PROJECT_ROOT / "ic_scan_results_new.csv")
         stocks_df = screen_stocks(ic_df, top_n=args.top_n)
         
         if stocks_df is not None:

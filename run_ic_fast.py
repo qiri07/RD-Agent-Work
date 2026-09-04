@@ -15,13 +15,13 @@ from scipy.stats import rankdata
 pd.set_option('display.max_columns', 20)
 pd.set_option('display.width', 200)
 
-BASE = Path("/run/media/onai/MyDisk/Work/RD-Agent-Work")
-WS = BASE / "git_ignore_folder" / "RD-Agent_workspace"
-SRC_PQ = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
-OUT_DIR = SRC_PQ.parent
+import config as cfg
 
-# 导入飞书推送模块
-sys.path.insert(0, str(BASE))
+BASE = cfg.PROJECT_ROOT
+WS = cfg.RDAGENT_WORKSPACE
+SRC_PQ = cfg.DAILY_PV_FULL_PQ
+OUT_DIR = cfg.FACTOR_SOURCE
+
 from feishu_notify import send_combined_report
 
 
