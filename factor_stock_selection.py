@@ -12,7 +12,9 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
-WORKSPACE = Path("git_ignore_folder/RD-Agent_workspace")
+import config as cfg
+
+WORKSPACE = cfg.RDAGENT_WORKSPACE
 
 
 # ═══════════════════════════════════════════════════════════

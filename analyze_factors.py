@@ -11,10 +11,12 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
+import config as cfg
+
 class FactorAnalyzer:
-    def __init__(self, workspace_path="git_ignore_folder/RD-Agent_workspace"):
-        self.workspace_path = workspace_path
-        self.factors_dir = Path(workspace_path)
+    def __init__(self, workspace_path=None):
+        self.workspace_path = workspace_path or str(cfg.RDAGENT_WORKSPACE)
+        self.factors_dir = Path(self.workspace_path)
         
     def get_all_factors(self):
         """获取所有因子信息"""
@@ -227,7 +229,7 @@ def main():
     print("-" * 40)
     print("""
 # 初始化分析器
-analyzer = FactorAnalyzer("git_ignore_folder/RD-Agent_workspace")
+analyzer = FactorAnalyzer()
 
 # 获取所有因子信息
 factors = analyzer.get_all_factors()

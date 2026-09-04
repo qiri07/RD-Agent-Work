@@ -107,6 +107,12 @@ def is_feishu_configured() -> bool:
     return bool(FEISHU_WEBHOOK_URL) and "YOUR_WEBHOOK" not in FEISHU_WEBHOOK_URL
 
 
+# 字符串路径（用于传给接受 str 的 API）
+RDAGENT_WORKSPACE_STR = str(RDAGENT_WORKSPACE)
+FACTOR_SOURCE_STR = str(FACTOR_SOURCE)
+FACTOR_SOURCE_DEBUG_STR = str(FACTOR_SOURCE_DEBUG)
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("  项目配置校验")

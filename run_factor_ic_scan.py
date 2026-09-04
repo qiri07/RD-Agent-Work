@@ -22,11 +22,12 @@ import pandas as pd
 warnings.filterwarnings('ignore')
 
 # ── 路径配置 ───────────────────────────────────────────────────────────────────
-BASE = Path(__file__).resolve().parent
-WS = BASE / "git_ignore_folder" / "RD-Agent_workspace"
-SRC_H5 = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.h5"
-SRC_PQ = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
-RETURNS_H5 = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "returns_5d.h5"
+import config as cfg
+BASE = cfg.PROJECT_ROOT
+WS = cfg.RDAGENT_WORKSPACE
+SRC_H5 = cfg.FACTOR_SOURCE / "daily_pv_full.h5"
+SRC_PQ = cfg.FACTOR_SOURCE / "daily_pv_full.parquet"
+RETURNS_H5 = cfg.FACTOR_SOURCE / "returns_5d.h5"
 
 PHASE1_ONLY = "--phase1-only" in sys.argv
 PHASE2_ONLY = "--phase2-only" in sys.argv
@@ -327,7 +328,7 @@ def main():
             print(f"  #{rank:2d}  {row['factor_id']:<40s}  IC_avg={ic_avg:>+8.4f}  IC_t(5d)={ic_t:>+8.3f}" if not np.isnan(ic_avg) else f"  #{rank:2d}  {row['factor_id']:<40s}  IC_avg=N/A", flush=True)
 
         # 保存结果
-        out_path = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "ic_scan_results.parquet"
+        out_path = cfg.FACTOR_SOURCE / "ic_scan_results.parquet"
         ic_df.to_parquet(out_path)
         print(f"\n💾 IC 分析结果已保存: {out_path}", flush=True)
 

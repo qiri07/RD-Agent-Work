@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Verify all 66 factor results and convert parquet to hdf5.
-Usage: python3 verify_and_convert.py [--convert]
+Verify all factor results and convert parquet to hdf5.
+Usage: python3 verify_factors.py [--convert]
 """
 import os
 import sys
 import pandas as pd
 from pathlib import Path
 
-BASE = Path('/run/media/onai/MyDisk/Work/RD-Agent-Work/git_ignore_folder/RD-Agent_workspace')
+import config as cfg
+
+BASE = cfg.RDAGENT_WORKSPACE
 TARGET_ROWS = 8392254
 TARGET_STOCKS = 5553
 

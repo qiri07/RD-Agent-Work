@@ -19,12 +19,13 @@ from pathlib import Path
 import pandas as pd
 
 # ── 路径配置 ──────────────────────────────────────────────────────────────────
-BASE = Path(__file__).resolve().parent
-WS = BASE / "git_ignore_folder" / "RD-Agent_workspace"
-SRC_PQ = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
-SRC_H5 = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.h5"
-SRC_DEBUG_PQ = BASE / "git_ignore_folder" / "factor_implementation_source_data_debug" / "daily_pv.parquet"
-SRC_DEBUG_H5 = BASE / "git_ignore_folder" / "factor_implementation_source_data_debug" / "daily_pv.h5"
+import config as cfg
+BASE = cfg.PROJECT_ROOT
+WS = cfg.RDAGENT_WORKSPACE
+SRC_PQ = cfg.FACTOR_SOURCE / "daily_pv_full.parquet"
+SRC_H5 = cfg.FACTOR_SOURCE / "daily_pv_full.h5"
+SRC_DEBUG_PQ = cfg.FACTOR_SOURCE_DEBUG / "daily_pv.parquet"
+SRC_DEBUG_H5 = cfg.FACTOR_SOURCE_DEBUG / "daily_pv.h5"
 
 PHASE1 = "--phase1" in sys.argv
 PHASE2 = "--phase2" in sys.argv

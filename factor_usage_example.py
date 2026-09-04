@@ -11,11 +11,13 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
+import config as cfg
+
 class QuantFactorStrategy:
     """基于RD-Agent因子的量化策略"""
-    
-    def __init__(self, workspace_path="git_ignore_folder/RD-Agent_workspace"):
-        self.workspace_path = Path(workspace_path)
+
+    def __init__(self, workspace_path=None):
+        self.workspace_path = Path(workspace_path or cfg.RDAGENT_WORKSPACE)
         self.factors = {}
         self.combined_factors = None
         
@@ -231,7 +233,7 @@ def save_factor_data():
     print("=" * 60)
     
     # 导出所有可用因子
-    workspace = Path("git_ignore_folder/RD-Agent_workspace")
+    workspace = cfg.RDAGENT_WORKSPACE
     factor_dirs = [d for d in workspace.iterdir() if d.is_dir()]
     
     all_factors = {}

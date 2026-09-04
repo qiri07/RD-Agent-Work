@@ -14,17 +14,19 @@ from pathlib import Path
 import warnings, time
 warnings.filterwarnings('ignore')
 
-WORKSPACE = Path("git_ignore_folder/RD-Agent_workspace")
-SOURCE_H5 = Path("git_ignore_folder/factor_implementation_source_data_debug/daily_pv_temp.h5")
+import config as cfg
 
-INITIAL_CAPITAL = 1_000_000
-COMMISSION = 0.0003
-SLIPPAGE = 0.001
-MIN_TRADE = 10_000
-SPLIT_CURR = pd.Timestamp("2026-09-02")
-SPLIT_PREV = pd.Timestamp("2026-09-01")
-TOP_K = 10
-HOLD = 5
+WORKSPACE = cfg.RDAGENT_WORKSPACE
+SOURCE_H5 = cfg.FACTOR_SOURCE_DEBUG / "daily_pv_temp.h5"
+
+INITIAL_CAPITAL = cfg.BACKTEST_INITIAL_CAPITAL
+COMMISSION = cfg.BACKTEST_COMMISSION_RATE
+SLIPPAGE = cfg.BACKTEST_SLIPPAGE_RATE
+MIN_TRADE = cfg.BACKTEST_MIN_TRADE_VALUE
+SPLIT_CURR = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_CURR or "2026-09-02")
+SPLIT_PREV = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_PREV or "2026-09-01")
+TOP_K = cfg.BACKTEST_TOP_K
+HOLD = cfg.BACKTEST_HOLD_DAYS
 
 
 def load_all_factors():

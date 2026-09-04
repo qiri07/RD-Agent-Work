@@ -2,111 +2,140 @@
 
 ## 📊 当前状态
 
-根据最新的工作流状态统计：
-
 | 指标 | 数值 |
 |------|------|
 | 总结果数 | 52 (result.h5 文件) |
 | 因子实现 | 66 (factor.py 文件) |
 | 本次新增 | +43 个因子 |
 | 成功率 | 78.8% (52/66) |
+| 有效 IC 交易日 | 967 天（每日 ≥50 只股票） |
+| 最强因子 | Momentum_5d 变体（IC_5d = 0.0717） |
+| 数据范围 | 2018-01-02 ~ 2026-08-31（~5,553 只 A股） |
 
 ## 🔍 因子类型分布
 
 生成的因子主要分为以下几类：
 
 - **Momentum (动量)**: 24 个因子
-- **Volume (成交量)**: 18 个因子  
+- **Volume (成交量)**: 18 个因子
 - **Return (收益率)**: 10 个因子
 - **Reversal (反转)**: 3 个因子
 - **Other (其他)**: 11 个因子
 
+## 🚀 快速开始
+
+### 一键流程（推荐）
+
+```bash
+source rdagent-env/bin/activate
+python run_pipeline.py              # IC分析 → 选股 → 飞书推送
+python run_pipeline.py --ic-only    # 只跑 IC 分析
+python run_pipeline.py --stocks-only  # 只选股（用已有 IC 结果）
+```
+
+### 单独运行各模块
+
+```bash
+# IC 因子分析
+python run_ic_fast.py
+
+# 全量因子选股
+python full_factor_stock_selection.py
+
+# 回测 Top-10 策略
+python backtest_top10.py
+
+# 飞书推送（CLI 模式）
+python feishu_notify.py \
+  --ic-results ic_scan_results_new.csv \
+  --stocks top10_stocks_new.csv
+```
+
+### 配置管理
+
+所有参数统一在 `config.py` 中管理，支持环境变量覆盖：
+
+```bash
+export BACKTEST_TOP_K=20
+export BACKTEST_HOLD_DAYS=10
+export FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxx
+```
+
 ## 📁 文件结构
 
 ```
-git_ignore_folder/RD-Agent_workspace/
-├── [因子ID目录]/
-│   ├── factor.py           # 因子实现代码
-│   ├── result.h5           # 因子计算结果
-│   ├── daily_pv.h5         # 原始数据
-│   └── README.md           # 说明文件
+RD-Agent-Work/
+├── config.py                    # 统一配置管理
+├── feishu_notify.py             # 飞书推送模块
+├── run_pipeline.py              # 一体化流水线
+├── run_ic_fast.py               # 高性能 IC 分析
+├── full_factor_stock_selection.py  # 全量因子选股
+├── backtest_top10.py            # 回测引擎
+├── factor_scan_mem_optimized.py # 内存优化版扫描
+├── analyze_factors.py           # 因子分析工具
+├── factor_portfolio.py          # 多因子组合工具
+├── visualize_results.py         # 可视化
+├── tests/                       # 单元测试（25 tests）
+└── git_ignore_folder/           # 数据文件（不入库）
+    ├── RD-Agent_workspace/      # 66 因子会话
+    └── factor_implementation_source_data/
+        ├── daily_pv_full.parquet  # 价格数据
+        └── ic_scan_results_new.parquet
 ```
 
-## 🚀 快速开始
+## 🔧 编程接口
 
-### 1. 使用分析工具
+### 加载单个因子
 
-系统提供了两个核心工具来使用这些因子：
-
-#### 因子分析工具 (`analyze_factors.py`)
-```bash
-source rdagent-env/bin/activate
-python3 analyze_factors.py
-```
-
-**功能**:
-- 分析所有因子的基本统计特征
-- 按类型分类因子
-- 提供因子质量评估
-- 生成使用建议
-
-#### 因子组合工具 (`factor_portfolio.py`)  
-```bash
-source rdagent-env/bin/activate
-python3 factor_portfolio.py
-```
-
-**功能**:
-- 加载多个因子进行组合
-- 计算因子相关性
-- 生成综合因子得分
-- 简单的回测分析
-
-### 2. 编程接口使用
-
-#### 加载单个因子
 ```python
 import pandas as pd
 from pathlib import Path
+import config as cfg
 
-# 加载因子数据
 factor_id = "02d7dce95b7f410aa3ba2f8c2ab29b57"
-result_file = Path(f"git_ignore_folder/RD-Agent_workspace/{factor_id}/result.h5")
+result_file = cfg.RDAGENT_WORKSPACE / factor_id / "result.h5"
 factor_data = pd.read_hdf(result_file, key='data')
 
 print(factor_data.head())
 print(f"因子统计: {factor_data.describe()}")
 ```
 
-#### 加载多个因子
+### 加载多个因子并组合
+
 ```python
-# 使用组合工具
 from factor_portfolio import FactorPortfolio
 
 portfolio = FactorPortfolio()
-
-# 选择因子ID
 factor_ids = [
     "02d7dce95b7f410aa3ba2f8c2ab29b57",  # 10-day Momentum
     "04d1651ebc7043c9bd047ca828cc479e",  # volume_spike
-    "1adcc39c1ecb48e8b734cf649359c4ee"   # Momentum_5d
+    "1adcc39c1ecb48e8b734cf649359c4ee",   # Momentum_5d
 ]
-
-# 加载并合并因子
 combined_factors = portfolio.load_multiple_factors(factor_ids)
 ```
 
-#### 查看因子代码
+### 因子分析
+
 ```python
-# 查看因子实现代码
-factor_file = Path(f"git_ignore_folder/RD-Agent_workspace/{factor_id}/factor.py")
+from analyze_factors import FactorAnalyzer
+
+analyzer = FactorAnalyzer()
+summary = analyzer.summarize_factors()
+print(f"总因子数: {summary['total_factors']}")
+print(f"因子类型分布: {summary['categories']}")
+```
+
+### 查看因子代码
+
+```python
+factor_file = cfg.RDAGENT_WORKSPACE / "02d7dce95b7f410aa3ba2f8c2ab29b57" / "factor.py"
 with open(factor_file, 'r') as f:
     print(f.read())
 ```
 
 ## 🎯 因子应用策略
 
-### 1. 因子选择建议
+### 因子选择建议
 
 **多元化组合**:
 - 选择不同类型的因子进行组合
@@ -114,11 +143,11 @@ with open(factor_file, 'r') as f:
 - 避免选择高度相关的因子
 
 **质量筛选**:
-- 检查因子的数据完整性 (避免过多NaN值)
-- 分析因子统计特征 (均值、标准差、极值)
+- 检查因子的数据完整性（避免过多 NaN 值）
+- 分析因子统计特征（均值、标准差、极值）
 - 确保因子在不同市场环境下表现稳定
 
-### 2. 因子组合方法
+### 多因子组合方法
 
 #### 等权重组合
 ```python
@@ -132,140 +161,58 @@ factor_score = portfolio.calculate_factor_score(combined_factors, equal_weights)
 
 #### 自定义权重组合
 ```python
-# 根据因子表现设置权重
 custom_weights = {
     '10-day Momentum': 0.4,
-    'volume_spike': 0.3, 
+    'volume_spike': 0.3,
     'Momentum_5d': 0.3
 }
-
 factor_score = portfolio.calculate_factor_score(combined_factors, custom_weights)
 ```
 
-### 3. 回测验证
-
-#### 使用组合工具的简单回测
-```python
-# 准备因子得分
-score_df = factor_score.to_frame('combined_score')
-
-# 简单回测分析
-backtest_result = portfolio.backtest_factor(score_df, top_k=50)
-```
-
-#### 导出因子到 Qlib
-```python
-# 保存因子数据
-combined_factors.to_hdf('combined_factors.h5', key='data', mode='w')
-
-# 在 Qlib 配置中使用
-# conf_combined_factors.yaml
-# config: "combined_factors_df.parquet"
-```
-
-## 📈 高级应用
-
-### 1. 因子筛选与优化
+### 因子筛选与优化
 
 ```python
 # 分析因子相关性
 correlation_matrix = combined_factors.corr()
 
-# 移除高相关因子
-threshold = 0.9  # 相关系数阈值
+# 移除高相关因子（阈值 0.9）
+threshold = 0.9
 to_remove = set()
 for i in range(len(correlation_matrix.columns)):
     for j in range(i+1, len(correlation_matrix.columns)):
-        if abs(correlation_matrix.iloc[i,j]) > threshold:
+        if abs(correlation_matrix.iloc[i, j]) > threshold:
             to_remove.add(correlation_matrix.columns[j])
 
 filtered_factors = combined_factors.drop(columns=list(to_remove))
-```
-
-### 2. 动态因子选择
-
-```python
-# 根据时间段选择表现好的因子
-def select_factors_by_period(factor_data, start_date, end_date):
-    period_data = factor_data.loc[(factor_data.index.get_level_values(0) >= start_date) & 
-                                  (factor_data.index.get_level_values(0) <= end_date)]
-    
-    # 计算每个因子的IC/IR指标
-    factor_performance = {}
-    for col in period_data.columns:
-        # 简化的IC计算
-        ic = period_data[col].corr(period_data['next_return'])
-        ir = ic / period_data[col].std()
-        factor_performance[col] = {'IC': ic, 'IR': ir}
-    
-    return factor_performance
-```
-
-### 3. 风险控制
-
-```python
-# 添加风险因子到组合
-risk_factors = [
-    "market_risk_factor_id",  # 市场风险因子
-    "sector_risk_factor_id",  # 行业风险因子
-]
-
-combined_with_risk = portfolio.load_multiple_factors(factor_ids + risk_factors)
-
-# 计算风险调整后的因子得分
-risk_adjusted_score = portfolio.calculate_factor_score(combined_with_risk)
 ```
 
 ## 💡 使用建议
 
 ### 最佳实践
 
-1. **数据质量检查**:
-   - 检查因子数据的完整性
-   - 处理异常值和缺失值
-   - 确保时间序列的一致性
-
-2. **因子稳定性**:
-   - 进行样本外测试
-   - 避免过度拟合
-   - 定期更新因子
-
-3. **风险管理**:
-   - 设置最大持仓比例
-   - 添加止损机制
-   - 考虑市场环境变化
+1. **数据质量检查**: 检查因子数据的完整性，处理异常值和缺失值
+2. **因子稳定性**: 进行样本外测试，避免过度拟合
+3. **风险管理**: 设置最大持仓比例，加入行业中性约束
 
 ### 常见问题
 
 **Q: 如何选择最佳的因子组合？**
-A: 建议从不同类型因子中选择1-2个表现稳定的因子，通过回测试验不同组合的效果。
+A: 建议从不同类型因子中选择 1-2 个表现稳定的因子，通过回测试验不同组合的效果。
 
 **Q: 因子数据如何更新？**
 A: 重新运行 RD-Agent 工作流，或手动更新因子代码中的数据源。
 
 **Q: 如何评估因子表现？**
-A: 可以使用 IC/IR 指标、夏普比率、最大回撤等量化指标进行评估。
+A: 使用 IC/IR 指标、夏普比率、最大回撤等量化指标进行评估。
 
-## 🔧 技术支持
+## 🧪 单元测试
 
-### 文件路径
-- 工作空间: `git_ignore_folder/RD-Agent_workspace/`
-- 日志文件: `log/2026-09-02_06-08-29-928566/`
-- 工具脚本: `analyze_factors.py`, `factor_portfolio.py`
-
-### 命令参考
 ```bash
-# 运行因子分析
-python3 analyze_factors.py
-
-# 运行因子组合
-python3 factor_portfolio.py
-
-# 查看工作流状态
-find log -name "*.pkl" | grep feedback
-
-# 统计因子数量
-find git_ignore_folder/RD-Agent_workspace -name "factor.py" | wc -l
+source rdagent-env/bin/activate
+python tests/test_config.py        # 9 tests — 配置、环境变量覆盖
+python tests/test_feishu_notify.py # 7 tests — 飞书消息格式
+python tests/test_ic_computation.py# 9 tests — IC 计算逻辑
+# 共 25 tests，全部通过
 ```
 
 ## 📞 获取帮助
@@ -277,6 +224,6 @@ find git_ignore_folder/RD-Agent_workspace -name "factor.py" | wc -l
 
 ---
 
-**更新时间**: 2026-09-02  
+**更新时间**: 2026-09-04  
 **工作流版本**: RD-Agent v0.8.0  
-**数据范围**: 2018-01-02 ~ 2026-08-31 (483只A股)
+**数据范围**: 2018-01-02 ~ 2026-08-31（~5,553 只 A股）

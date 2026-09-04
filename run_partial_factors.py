@@ -4,7 +4,9 @@ import os
 import pandas as pd
 from pathlib import Path
 
-BASE = Path('/run/media/onai/MyDisk/Work/RD-Agent-Work/git_ignore_folder/RD-Agent_workspace')
+import config as cfg
+
+BASE = cfg.RDAGENT_WORKSPACE
 
 sessions = [
     '0d44eee04fdc468b9b0d2ebe0195f8ad',

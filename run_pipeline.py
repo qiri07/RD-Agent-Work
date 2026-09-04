@@ -35,7 +35,7 @@ def run_ic_analysis():
     
     result = subprocess.run(
         [sys.executable, str(cfg.PROJECT_ROOT / "run_ic_fast.py")],
-        cwd=str(BASE),
+        cwd=str(cfg.PROJECT_ROOT),
         capture_output=False,
     )
     return result.returncode == 0
@@ -67,8 +67,8 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
         print(f"    {i}. {fid[:30]}  IC={row['IC_5d']:+.4f}")
     
     # 加载因子数据
-    WS = cfg.PROJECT_ROOT / "git_ignore_folder" / "RD-Agent_workspace"
-    SRC_PQ = cfg.PROJECT_ROOT / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_full.parquet"
+    WS = cfg.RDAGENT_WORKSPACE
+    SRC_PQ = cfg.DAILY_PV_FULL_PQ
     
     print("\n  加载因子数据...")
     factor_dict = {}

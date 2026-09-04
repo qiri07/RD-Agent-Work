@@ -10,7 +10,7 @@
 | Ollama | - | 🔄 运行中 |
 | A股数据 | BaoStock | ✅ 已接入 |
 
-## 📊 RD-Agent 因子研发成果 (最新更新: 2026-09-02)
+## 📊 RD-Agent 因子研发成果 (最新更新: 2026-09-04)
 
 ### 因子工作流状态
 | 指标 | 数值 |
@@ -28,17 +28,35 @@
 - **Other (其他)**: 11个因子 (16.7%)
 
 ### 可用工具
-- `analyze_factors.py` - 因子分析工具
-- `factor_portfolio.py` - 因子组合工具
-- `factor_usage_example.py` - 使用示例脚本
+| 脚本 | 功能 |
+|------|------|
+| `run_pipeline.py` | 一键流程：IC分析 → 选股 → 飞书推送 |
+| `run_ic_fast.py` | 高性能 IC 分析（合并对齐版 v5） |
+| `full_factor_stock_selection.py` | 全量因子选股 |
+| `backtest_top10.py` | Top-10 策略回测（含复权处理） |
+| `factor_scan_mem_optimized.py` | 内存优化版因子扫描 |
+| `feishu_notify.py` | 飞书推送（支持 CLI） |
+| `config.py` | 统一配置管理（环境变量覆盖） |
+| `analyze_factors.py` | 因子分析工具 |
+| `factor_portfolio.py` | 多因子组合工具 |
+| `visualize_results.py` | 回测结果可视化 |
+
+### 单元测试
+```bash
+source rdagent-env/bin/activate
+python tests/test_config.py        # 9 tests
+python tests/test_feishu_notify.py # 7 tests
+python tests/test_ic_computation.py# 9 tests
+# 共 25 tests，全部通过
+```
 
 ### 生成的数据文件
-- `all_available_factors.h5` - 42个可用因子数据
-- `combined_factors.h5` - 多因子组合数据
-- `momentum_backtest.csv` - 动量策略回测结果
-- `mixed_strategy_backtest.csv` - 混合策略回测结果
+- `ic_scan_results_new.csv` — IC 分析结果（56个因子）
+- `top10_stocks_new.csv` — Top 10 选股结果
+- `backtest_nav.csv` — 回测净值曲线
+- `backtest_trades.csv` — 回测交易明细
 
-详细使用指南请查看: `FACTOR_USAGE_GUIDE.md` 和 `FACTOR_WORKFLOW_ANALYSIS.md`
+详细使用指南请查看: `README.md`、`FACTOR_USAGE_GUIDE.md` 和 `QUICKSTART_GUIDE.md`
 
 ## A股数据接入详情
 
@@ -46,7 +64,7 @@
 |------|------|
 | 数据源 | [BaoStock](http://baostock.com) - 免费 A股历史数据接口 |
 | 时间范围 | 2018-01-02 ~ 2026-08-31（2102个交易日） |
-| 股票数量 | 483只 A股（上证SH + 深证SZ） |
+| 股票数量 | ~5,553只 A股（上证SH + 深证SZ，2023年后全量） |
 | 数据格式 | HDF5 (MultiIndex: instrument × date) |
 | 主数据 | `git_ignore_folder/factor_implementation_source_data/daily_pv.h5` (49MB) |
 | 调试数据 | `git_ignore_folder/factor_implementation_source_data_debug/daily_pv.h5` (10MB) |

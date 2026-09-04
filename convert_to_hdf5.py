@@ -7,7 +7,9 @@ import os
 import pandas as pd
 from pathlib import Path
 
-BASE = Path('/run/media/onai/MyDisk/Work/RD-Agent-Work/git_ignore_folder/RD-Agent_workspace')
+import config as cfg
+
+BASE = cfg.RDAGENT_WORKSPACE
 
 def convert_parquet_to_hdf5(session_dir: Path):
     """Convert result.parquet to result.h5 in a session directory."""

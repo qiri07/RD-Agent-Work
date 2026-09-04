@@ -9,10 +9,12 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
+import config as cfg
+
 class FactorPortfolio:
-    def __init__(self, workspace_path="git_ignore_folder/RD-Agent_workspace"):
-        self.workspace_path = workspace_path
-        self.factors_dir = Path(workspace_path)
+    def __init__(self, workspace_path=None):
+        self.workspace_path = workspace_path or str(cfg.RDAGENT_WORKSPACE)
+        self.factors_dir = Path(self.workspace_path)
         
     def load_multiple_factors(self, factor_ids, normalize=True):
         """

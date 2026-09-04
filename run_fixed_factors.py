@@ -8,7 +8,9 @@ import sys
 import pandas as pd
 from pathlib import Path
 
-BASE = Path('/run/media/onai/MyDisk/Work/RD-Agent-Work/git_ignore_folder/RD-Agent_workspace')
+import config as cfg
+
+BASE = cfg.RDAGENT_WORKSPACE
 
 sessions = {
     '0e589b24e03e472b8e42b10aa0f49f0e': 'calculate_volume_ratio_5d',

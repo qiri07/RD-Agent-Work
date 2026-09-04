@@ -2,8 +2,11 @@ import pandas as pd, numpy as np
 from pathlib import Path
 import warnings; warnings.filterwarnings('ignore')
 
+import config as cfg
+
 # Use cleaned data
-SOURCE_H5 = Path('git_ignore_folder/factor_implementation_source_data_debug/daily_pv_clean.h5')
+SOURCE_H5 = cfg.FACTOR_SOURCE_DEBUG / "daily_pv_clean.h5"
+WORKSPACE = cfg.RDAGENT_WORKSPACE
 df = pd.read_hdf(SOURCE_H5, key='data').sort_index()
 print(f'Clean data: {len(df):,} rows, {df.index.get_level_values("instrument").nunique()} stocks')
 
@@ -19,7 +22,7 @@ fids = [
 ]
 print('\n=== IC with CLEAN returns ===')
 for fid, name in fids:
-    fp = Path(f'git_ignore_folder/RD-Agent_workspace/{fid}/result.h5')
+    fp = WORKSPACE / fid / "result.h5"
     fs = pd.read_hdf(fp, key='data').iloc[:,0].ffill().dropna()
     matches = fs.dropna().index.intersection(returns_5d.dropna().index)
     if len(matches) < 100:
@@ -35,7 +38,7 @@ for fid, name in fids:
 
 # Yearly IC for momentum
 print('\n=== Yearly IC for momentum_10d ===')
-fp = Path('git_ignore_folder/RD-Agent_workspace/02d7dce95b7f410aa3ba2f8c2ab29b57/result.h5')
+fp = WORKSPACE / "02d7dce95b7f410aa3ba2f8c2ab29b57" / "result.h5"
 fs = pd.read_hdf(fp, key='data').iloc[:,0].ffill().dropna()
 matches = fs.dropna().index.intersection(returns_5d.dropna().index)
 f, r = fs.loc[matches], returns_5d.loc[matches]
@@ -49,7 +52,7 @@ for y in [2023, 2024, 2025, 2026]:
 
 # Quick full scan: compute IC for ALL factors, write to file
 print('\n=== Full scan (writing to file) ===')
-WORKSPACE = Path('git_ignore_folder/RD-Agent_workspace')
+WORKSPACE = cfg.RDAGENT_WORKSPACE
 LOOKAHEAD = {'3e4aa8771f2340e5a1602649bb7c07bb','a9358be3286b43ea84ff83c315f54547',
     '54dec2334bec4988a5b89200917dcac3','1e3c8739f45b4179bf192e0b7918bfb8',
     '3d8b904927e248158b3ef3bf52ae0d43','4414a9e452e44991b2434a0cb59e745e',
