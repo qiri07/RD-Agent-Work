@@ -3,6 +3,7 @@
 高性能 IC 分析 v5 — 合并对齐 + numpy rankdata
 核心思路：将所有因子和收益合并到长表，按日期批量计算 IC
 """
+import argparse
 import gc
 import sys
 import time
@@ -23,6 +24,16 @@ SRC_PQ = cfg.DAILY_PV_FULL_PQ
 OUT_DIR = cfg.FACTOR_SOURCE
 
 from feishu_notify import send_combined_report
+
+
+def main():
+    parser = argparse.ArgumentParser(description="高性能 IC 分析 v5")
+    parser.add_argument("--feishu-url", default=None, help="飞书 Webhook URL（覆盖环境变量）")
+    args = parser.parse_args()
+
+    if args.feishu_url:
+        import feishu_notify
+        feishu_notify.FEISHU_WEBHOOK_URL = args.feishu_url
 
 
 def load_factors_as_long() -> pd.DataFrame:

@@ -27,14 +27,16 @@ import config as cfg
 from feishu_notify import send_combined_report
 
 
-def run_ic_analysis():
+def run_ic_analysis(feishu_url: str = None):
     """运行 IC 因子分析"""
     print("\n" + "=" * 70)
     print("  📊 步骤 1/3: IC 因子分析")
     print("=" * 70)
-    
+    cmd = [sys.executable, str(cfg.PROJECT_ROOT / "run_ic_fast.py")]
+    if feishu_url:
+        cmd.extend(["--feishu-url", feishu_url])
     result = subprocess.run(
-        [sys.executable, str(cfg.PROJECT_ROOT / "run_ic_fast.py")],
+        cmd,
         cwd=str(cfg.PROJECT_ROOT),
         capture_output=False,
     )
@@ -151,12 +153,16 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     return out_df
 
 
-def push_feishu(ic_df: pd.DataFrame, stocks_df: pd.DataFrame):
+def push_feishu(ic_df: pd.DataFrame, stocks_df: pd.DataFrame, feishu_url: str = None):
     """推送结果到飞书"""
     print("\n" + "=" * 70)
     print("  📱 步骤 3/3: 推送飞书通知")
     print("=" * 70)
-    
+
+    if feishu_url:
+        import feishu_notify
+        feishu_notify.FEISHU_WEBHOOK_URL = feishu_url
+
     try:
         success = send_combined_report(ic_df, stocks_df, top_n=10)
         if success:
@@ -175,56 +181,57 @@ def main():
     parser.add_argument("--ic-results", help="指定 IC 结果 CSV 路径")
     parser.add_argument("--stocks", help="指定选股结果 CSV 路径")
     parser.add_argument("--top-n", type=int, default=10, help="Top N 因子数量 (默认 10)")
+    parser.add_argument("--feishu-url", default=None, help="飞书 Webhook URL（覆盖环境变量）")
     args = parser.parse_args()
-    
+
     t_start = time.time()
-    
+
     if args.feishu_only:
         # 仅推送模式
         ic_path = Path(args.ic_results) if args.ic_results else cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
         stocks_path = Path(args.stocks) if args.stocks else cfg.PROJECT_ROOT / "top10_stocks_new.csv"
-        
+
         if not ic_path.exists():
             print(f"❌ IC 结果文件不存在: {ic_path}")
             return 1
         if not stocks_path.exists():
             print(f"❌ 选股结果文件不存在: {stocks_path}")
             return 1
-        
+
         ic_df = pd.read_csv(ic_path)
         stocks_df = pd.read_csv(stocks_path)
-        push_feishu(ic_df, stocks_df)
-        
+        push_feishu(ic_df, stocks_df, feishu_url=args.feishu_url)
+
     elif args.ic_only:
         # 只运行 IC 分析（内部已包含飞书推送）
-        if not run_ic_analysis():
+        if not run_ic_analysis(feishu_url=args.feishu_url):
             print("❌ IC 分析失败")
             return 1
-            
+
     elif args.stocks_only:
         # 只选股
         ic_path = cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
         if not ic_path.exists():
             print(f"❌ IC 结果文件不存在，请先运行 IC 分析: {ic_path}")
             return 1
-        
+
         ic_df = pd.read_csv(ic_path)
         stocks_df = screen_stocks(ic_df, top_n=args.top_n)
-        
+
         if stocks_df is not None:
-            push_feishu(ic_df, stocks_df)
-            
+            push_feishu(ic_df, stocks_df, feishu_url=args.feishu_url)
+
     else:
         # 完整流程
-        if not run_ic_analysis():
+        if not run_ic_analysis(feishu_url=args.feishu_url):
             print("❌ IC 分析失败，终止流程")
             return 1
-        
+
         ic_df = pd.read_csv(cfg.PROJECT_ROOT / "ic_scan_results_new.csv")
         stocks_df = screen_stocks(ic_df, top_n=args.top_n)
-        
+
         if stocks_df is not None:
-            push_feishu(ic_df, stocks_df)
+            push_feishu(ic_df, stocks_df, feishu_url=args.feishu_url)
     
     print(f"\n✅ 完成！总耗时: {time.time()-t_start:.1f}s")
     return 0
