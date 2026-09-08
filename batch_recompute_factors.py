@@ -22,8 +22,12 @@ import pandas as pd
 import config as cfg
 BASE = cfg.PROJECT_ROOT
 WS = cfg.RDAGENT_WORKSPACE
-SRC_PQ = cfg.FACTOR_SOURCE / "daily_pv_full.parquet"
-SRC_H5 = cfg.FACTOR_SOURCE / "daily_pv_full.h5"
+SRC_PQ = cfg.DAILY_PV_PQ  # 使用 trade-krono 转换的干净数据
+if not SRC_PQ.exists():
+    SRC_PQ = cfg.DAILY_PV_FULL_CORRECTED_PQ  # 降级到矫正数据
+if not SRC_PQ.exists():
+    SRC_PQ = cfg.DAILY_PV_FULL_PQ  # 再降级
+SRC_H5 = cfg.FACTOR_SOURCE / "daily_pv.h5"
 SRC_DEBUG_PQ = cfg.FACTOR_SOURCE_DEBUG / "daily_pv.parquet"
 SRC_DEBUG_H5 = cfg.FACTOR_SOURCE_DEBUG / "daily_pv.h5"
 
@@ -40,16 +44,23 @@ def get_sessions() -> list[Path]:
 def copy_data_to_session(session: Path) -> bool:
     """将全量数据复制到 session 目录（使用 parquet 更快）"""
     try:
-        # 优先用 parquet（114MB vs 416MB），因子代码兼容两种格式
+        # 优先用 parquet（133MB vs 757MB），因子代码兼容两种格式
         if SRC_PQ.exists():
-            # 临时写一个 helpers 让 factor.py 也能读 parquet
             dst_pq = session / "daily_pv.parquet"
             dst_h5 = session / "daily_pv.h5"
-            # 先复制 parquet（小文件，快）
+            # 删除旧的符号链接或文件（symlink 会导致 shutil.copy2 写入目标而非替换链接）
+            if dst_pq.is_symlink():
+                dst_pq.unlink()
+            elif dst_pq.exists():
+                dst_pq.unlink()
+            # 复制 parquet（实际文件，不是符号链接）
             shutil.copy2(SRC_PQ, dst_pq)
-            # 同时生成 h5（备用，因子代码默认读 h5）
-            if SRC_H5.exists():
-                shutil.copy2(SRC_H5, dst_h5)
+            # 从parquet生成h5（比直接复制757MB的h5更快更可靠）
+            try:
+                df_pq = pd.read_parquet(dst_pq)
+                df_pq.to_hdf(dst_h5, key="data", mode="w", format="table")
+            except Exception:
+                pass  # h5生成失败不影响使用，因子代码会读parquet
             # 清掉旧的执行锁
             lock = session / "execution.lock"
             if lock.exists():

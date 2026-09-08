@@ -1,8 +1,13 @@
+#!/usr/bin/env python3
+"""
+Check specific factor sessions for data quality issues.
+Usage: python3 check_factors.py
+"""
 import pandas as pd
 import os
 
-workspace = '/run/media/onai/MyDisk/Work/RD-Agent-Work/git_ignore_folder/RD-Agent_workspace'
-sessions = sorted(os.listdir(workspace))
+import config as cfg
+WORKSPACE = cfg.RDAGENT_WORKSPACE
 
 # Problematic sessions from summary
 problematic = [
@@ -24,41 +29,49 @@ dup_sessions = [
     'd789d95d712e4e64b5f9190f234b0bd1',
 ]
 
-print("=== Problematic Sessions (11) ===")
-for s in problematic:
-    h5 = os.path.join(workspace, s, 'result.h5')
-    if os.path.exists(h5):
-        df = pd.read_hdf(h5, key='data')
-        rows = len(df)
-        stocks = df.index.get_level_values('instrument').nunique()
-        cols = list(df.columns)
-        print(f"{s}: {rows:,} rows, {stocks} stocks, cols={cols}")
-    else:
-        print(f"{s}: NO result.h5")
 
-print("\n=== Duplicate Check Session ===")
-for s in dup_sessions:
-    h5 = os.path.join(workspace, s, 'result.h5')
-    if os.path.exists(h5):
-        df = pd.read_hdf(h5, key='data')
-        rows = len(df)
-        stocks = df.index.get_level_values('instrument').nunique()
-        print(f"{s}: {rows:,} rows, {stocks} stocks")
-    else:
-        print(f"{s}: NO result.h5")
+def main():
+    sessions = sorted(os.listdir(WORKSPACE))
 
-print("\n=== Full Scan: Sessions not at 8,392,254 rows ===")
-target = 8392254
-for s in sessions:
-    h5 = os.path.join(workspace, s, 'result.h5')
-    if not os.path.exists(h5):
-        print(f"{s}: NO result.h5")
-        continue
-    try:
-        df = pd.read_hdf(h5, key='data')
-        rows = len(df)
-        stocks = df.index.get_level_values('instrument').nunique()
-        if rows != target:
+    print("=== Problematic Sessions (11) ===")
+    for s in problematic:
+        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        if os.path.exists(h5):
+            df = pd.read_hdf(h5, key='data')
+            rows = len(df)
+            stocks = df.index.get_level_values('instrument').nunique()
+            cols = list(df.columns)
+            print(f"{s}: {rows:,} rows, {stocks} stocks, cols={cols}")
+        else:
+            print(f"{s}: NO result.h5")
+
+    print("\n=== Duplicate Check Session ===")
+    for s in dup_sessions:
+        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        if os.path.exists(h5):
+            df = pd.read_hdf(h5, key='data')
+            rows = len(df)
+            stocks = df.index.get_level_values('instrument').nunique()
             print(f"{s}: {rows:,} rows, {stocks} stocks")
-    except Exception as e:
-        print(f"{s}: ERROR - {e}")
+        else:
+            print(f"{s}: NO result.h5")
+
+    print("\n=== Full Scan: Sessions not at 8,392,254 rows ===")
+    target = 8392254
+    for s in sessions:
+        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        if not os.path.exists(h5):
+            print(f"{s}: NO result.h5")
+            continue
+        try:
+            df = pd.read_hdf(h5, key='data')
+            rows = len(df)
+            stocks = df.index.get_level_values('instrument').nunique()
+            if rows != target:
+                print(f"{s}: {rows:,} rows, {stocks} stocks")
+        except Exception as e:
+            print(f"{s}: ERROR - {e}")
+
+
+if __name__ == "__main__":
+    main()

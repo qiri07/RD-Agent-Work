@@ -20,7 +20,9 @@ import config as cfg
 
 BASE = cfg.PROJECT_ROOT
 WS = cfg.RDAGENT_WORKSPACE
-SRC_PQ = cfg.DAILY_PV_FULL_PQ
+SRC_PQ = cfg.DAILY_PV_PQ  # 使用 trade-krono 转换的干净数据
+if not SRC_PQ.exists():
+    SRC_PQ = cfg.DAILY_PV_FULL_CORRECTED_PQ  # 降级到矫正数据
 OUT_DIR = cfg.FACTOR_SOURCE
 
 from feishu_notify import send_combined_report
@@ -31,67 +33,82 @@ def main():
     parser.add_argument("--feishu-url", default=None, help="飞书 Webhook URL（覆盖环境变量）")
     args = parser.parse_args()
 
-    if args.feishu_url:
+    if args.feishu-url:
         import feishu_notify
-        feishu_notify.FEISHU_WEBHOOK_URL = args.feishu_url
+        feishu_notify.FEISHU_WEBHOOK_URL = args.feishu-url
 
 
-def load_factors_as_long() -> pd.DataFrame:
-    """加载所有因子 → 长表: [datetime, instrument, factor_id, factor_val]"""
-    print("加载因子...", flush=True)
-    t0 = time.time()
-    rows = []
-    for d in sorted(WS.iterdir()):
-        if not d.is_dir():
+def compute_ic_session(h5: Path, ret_lookup: dict) -> tuple:
+    """对单个因子 session 计算 IC，返回 (factor_id, {date: ic})"""
+    try:
+        df = pd.read_hdf(h5, key="data")
+    except Exception:
+        return None, {}
+    col = df.columns[0]
+    s = df[col].copy()
+    if s.index.names[0] != "datetime":
+        s.index = s.index.set_names(["datetime", "instrument"])
+    s = s.reset_index()
+    s.columns = ["datetime", "instrument", "factor_val"]
+    factor_id = h5.parent.name
+
+    # 按日期分组
+    dates = s["datetime"].unique()
+    ic_by_date = {}
+    for date in dates:
+        day = s[s["datetime"] == date]
+        vals = day["factor_val"].values.astype(np.float64)
+        keys = list(zip(day["datetime"], day["instrument"]))
+        rets = np.array([ret_lookup.get(k, np.nan) for k in keys], dtype=np.float64)
+        mask = ~(np.isnan(vals) | np.isnan(rets))
+        f = vals[mask]
+        r = rets[mask]
+        if len(f) < 50:
             continue
-        h5 = d / "result.h5"
-        if not h5.exists():
-            continue
-        try:
-            df = pd.read_hdf(h5, key="data")
-            col = df.columns[0]
-            s = df[col].copy()
-            if s.index.names[0] != "datetime":
-                s.index = s.index.set_names(["datetime", "instrument"])
-            s = s.reset_index()
-            s.columns = ["datetime", "instrument", "factor_val"]
-            s["factor_id"] = d.name
-            rows.append(s)
-        except Exception:
-            pass
-    long_df = pd.concat(rows, ignore_index=True)
-    print(f"  {len(long_df):,} 行 × {long_df['factor_id'].nunique()} 因子 ({time.time()-t0:.1f}s)", flush=True)
-    return long_df
+        rf = rankdata(f)
+        rr = rankdata(r)
+        n = len(f)
+        fc = rf - (n + 1) / 2
+        rc = rr - (n + 1) / 2
+        denom = np.sqrt(np.sum(fc * fc) * np.sum(rc * rc))
+        ic = np.sum(fc * rc) / denom if denom > 1e-15 else np.nan
+        ic_by_date[date] = ic
+
+    gc.collect()
+    return factor_id, ic_by_date
 
 
-def load_returns_as_long() -> pd.DataFrame:
-    """加载价格数据，计算 ret_5d → 长表: [date, instrument, return]"""
+def load_returns_as_long() -> dict:
+    """加载价格数据，计算 ret_5d → 字典 {(datetime, instrument): return}"""
     print("加载价格数据...", flush=True)
     t0 = time.time()
     df = pd.read_parquet(SRC_PQ)
     df_reset = df.reset_index()
     df_reset["ret_5d"] = df_reset.groupby("instrument")["$close"].pct_change(5).shift(-5)
     ret_df = df_reset[["date", "instrument", "ret_5d"]].dropna()
-    ret_df.columns = ["datetime", "instrument", "return"]
-    n_dates = ret_df["datetime"].nunique()
-    print(f"  {len(ret_df):,} 行, {n_dates} 个交易日 ({time.time()-t0:.1f}s)", flush=True)
-    return ret_df
+    ret_lookup = dict(zip(zip(ret_df["date"], ret_df["instrument"]), ret_df["ret_5d"]))
+    n_dates = ret_df["date"].nunique()
+    print(f"  {len(ret_lookup):,} 条, {n_dates} 个交易日 ({time.time()-t0:.1f}s)", flush=True)
+    return ret_lookup
 
 
 def compute_ic_long(factors_long: pd.DataFrame, returns_long: pd.DataFrame) -> pd.DataFrame:
     """
     合并后按日期分组，向量化计算 IC
+    优化：按日期分块处理，避免一次性合并 695M 行导致 OOM
     """
-    print("\n合并数据并计算 IC...", flush=True)
+    print("\n合并数据并计算 IC（分日处理）...", flush=True)
     t_total = time.time()
 
-    # 合并
-    merged = factors_long.merge(returns_long, on=["datetime", "instrument"], how="inner")
-    print(f"  合并后: {len(merged):,} 条记录", flush=True)
+    # 构建 return lookup: (datetime, instrument) -> return
+    ret_lookup = returns_long.set_index(["datetime", "instrument"])["return"].to_dict()
+    print(f"  return 字典: {len(ret_lookup):,} 条", flush=True)
+    del returns_long
+    gc.collect()
 
-    # 按日期和因子分组，批量计算 IC
-    # 策略：先按日期分块，每天内对每个因子计算 IC
-    dates = merged["datetime"].unique()
+    # 按日期分块
+    factors_long = factors_long.sort_values(["datetime", "instrument"]).reset_index(drop=True)
+    dates = factors_long["datetime"].unique()
     n_dates = len(dates)
     print(f"  {n_dates} 个交易日，开始逐日计算...", flush=True)
 
@@ -99,16 +116,21 @@ def compute_ic_long(factors_long: pd.DataFrame, returns_long: pd.DataFrame) -> p
     factor_ids = factors_long["factor_id"].unique()
     ic_dict = {fid: [] for fid in factor_ids}
 
-    # 构建每日数据字典，按因子分组
-    # 更高效的策略：按日期迭代，每天内直接算
     batch_size = 100
     for bi, date in enumerate(dates):
-        day_data = merged[merged["datetime"] == date]
-        day_groups = day_data.groupby("factor_id")
+        day_mask = factors_long["datetime"] == date
+        day_data = factors_long[day_mask]
+        day_rows = len(day_data)
 
-        for fid, grp in day_groups:
+        # 只保留有对应 return 的行
+        keys = list(zip(day_data["datetime"], day_data["instrument"]))
+        valid_mask = [k in ret_lookup for k in keys]
+        day_matched = day_data[valid_mask]
+
+        # 按因子分组计算 IC
+        for fid, grp in day_matched.groupby("factor_id"):
             vals = grp["factor_val"].values.astype(np.float64)
-            rets = grp["return"].values.astype(np.float64)
+            rets = np.array([ret_lookup[k] for k in zip(grp["datetime"], grp["instrument"])], dtype=np.float64)
             mask = ~(np.isnan(vals) | np.isnan(rets))
             f = vals[mask]
             r = rets[mask]
@@ -124,23 +146,18 @@ def compute_ic_long(factors_long: pd.DataFrame, returns_long: pd.DataFrame) -> p
             ic_dict[fid].append(ic)
 
         if (bi + 1) % batch_size == 0:
-            print(f"  已处理 {bi+1}/{n_dates} 天...", flush=True)
-
-    # 转数组
-    results = {}
-    for fid in factor_ids:
-        arr = np.array(ic_dict[fid], dtype=np.float64) if ic_dict[fid] else np.array([np.nan])
-        results[fid] = arr
+            print(f"  已处理 {bi+1}/{n_dates} 天 ({day_rows:,} 行/天)...", flush=True)
 
     print(f"IC 计算完成 ({time.time()-t_total:.1f}s)", flush=True)
-    return results
+    return ic_dict
 
 
 def summarize(results: dict, factor_ids: list) -> pd.DataFrame:
     """汇总为 DataFrame"""
     rows = []
     for fid in factor_ids:
-        ic_arr = results.get(fid, np.array([np.nan]))
+        ic_list = results.get(fid, [np.nan])
+        ic_arr = np.array(ic_list, dtype=np.float64)
         n = len(ic_arr)
         ic_mean = np.nanmean(ic_arr) if n > 0 else np.nan
         ic_std = np.nanstd(ic_arr) if n > 1 else 0.0
@@ -160,16 +177,38 @@ def summarize(results: dict, factor_ids: list) -> pd.DataFrame:
 
 def main():
     print("=" * 70, flush=True)
-    print("  因子 IC 分析 (新数据) — v5 合并对齐版", flush=True)
+    print("  因子 IC 分析 (新数据) — v5 分 session 处理版", flush=True)
     print("=" * 70, flush=True)
     t_main = time.time()
 
-    factors_long = load_factors_as_long()
-    returns_long = load_returns_as_long()
+    ret_lookup = load_returns_as_long()
 
-    results = compute_ic_long(factors_long, returns_long)
-    factor_ids = factors_long["factor_id"].unique().tolist()
-    ic_df = summarize(results, factor_ids)
+    print("加载因子并计算 IC...", flush=True)
+    t0 = time.time()
+    ic_dict = {}
+    session_count = 0
+    for d in sorted(WS.iterdir()):
+        if not d.is_dir():
+            continue
+        h5 = d / "result.h5"
+        if not h5.exists():
+            continue
+        try:
+            fid, ic_by_date = compute_ic_session(h5, ret_lookup)
+            if fid:
+                ic_dict[fid] = list(ic_by_date.values())
+                session_count += 1
+        except Exception as e:
+            print(f"  ⚠ {d.name[:8]}: {e}", flush=True)
+        if session_count % 10 == 0:
+            print(f"  已处理 {session_count} 个因子...", flush=True)
+
+    print(f"  共处理 {session_count} 个因子 ({time.time()-t0:.1f}s)", flush=True)
+    del ret_lookup
+    gc.collect()
+
+    factor_ids = list(ic_dict.keys())
+    ic_df = summarize(ic_dict, factor_ids)
 
     # 输出
     ic_out = ic_df.reset_index()

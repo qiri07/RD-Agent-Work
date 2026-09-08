@@ -13,9 +13,10 @@ from pathlib import Path
 import pandas as pd
 
 # ── 路径配置 ──
+import os as _os
 BASE = Path(__file__).parent
 TRADERO_CACHE_DB = Path(
-    "/run/media/onai/MyDisk/Work/trade-krono-cli/outputs/cache/pipeline_cache.db"
+    _os.getenv("TRADERO_CACHE_DB", "/run/media/onai/MyDisk/Work/trade-krono-cli/outputs/cache/pipeline_cache.db")
 )
 OUT_DIR_MAIN = BASE / "git_ignore_folder" / "factor_implementation_source_data"
 OUT_DIR_DEBUG = BASE / "git_ignore_folder" / "factor_implementation_source_data_debug"
@@ -133,11 +134,15 @@ def main():
                     existing_clean.reset_index(),
                     tradero_clean.reset_index(),
                 ]).set_index(["date", "instrument"]).sort_index()
+                # 去重：同一(date, instrument)只保留首次出现的行
+                merged = merged[~merged.index.duplicated(keep='first')]
             else:
                 merged = pd.concat([
                     existing.reset_index(),
                     tradero_converted.reset_index(),
                 ]).set_index(["date", "instrument"]).sort_index()
+                # 去重：同一(date, instrument)只保留首次出现的行
+                merged = merged[~merged.index.duplicated(keep='first')]
             print(f"合并后: {len(merged):,} 行, {merged.index.get_level_values('instrument').nunique()} 只", flush=True)
     else:
         merged = tradero_converted

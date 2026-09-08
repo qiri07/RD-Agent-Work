@@ -38,74 +38,8 @@ IC_FORWARD_DAYS = [1, 3, 5]   # 向前收益天数
 IC_WINSORIZE = 0.01            # 因子值缩尾处理
 IC_MIN_STocks_PER_DAY = 50     # 每日最少股票数
 
-
-def get_sessions() -> list[Path]:
-    return sorted([d for d in WS.iterdir() if d.is_dir() and (d / "factor.py").exists()])
-
-
-def copy_data_to_session(session: Path) -> bool:
-    """将全量数据复制到 session 目录"""
-    try:
-        dst_h5 = session / "daily_pv.h5"
-        dst_pq = session / "daily_pv.parquet"
-        if SRC_H5.exists():
-            shutil.copy2(SRC_H5, dst_h5)
-        if SRC_PQ.exists():
-            shutil.copy2(SRC_PQ, dst_pq)
-        lock = session / "execution.lock"
-        if lock.exists():
-            lock.unlink()
-        return True
-    except Exception as e:
-        print(f"  ❌ {session.name}: {e}", flush=True)
-        return False
-
-
-def run_factor(session: Path) -> tuple[bool, str]:
-    """运行 session 的 factor.py，返回 (success, info)"""
-    factor_py = session / "factor.py"
-    if not factor_py.exists():
-        return False, "无 factor.py"
-
-    old_cwd = os.getcwd()
-    try:
-        os.chdir(session)
-        start = time.time()
-
-        code = factor_py.read_text(encoding="utf-8")
-        func_match = re.search(r"def\s+(\w+)\s*\(\s*\):", code)
-        func_name = func_match.group(1) if func_match else None
-
-        if func_name:
-            namespace: dict = {}
-            exec(compile(code, str(factor_py), "exec"), namespace)
-            namespace[func_name]()
-        else:
-            exec(code, {})
-
-        elapsed = time.time() - start
-
-        result_h5 = session / "result.h5"
-        result_pq = session / "result.parquet"
-        if result_h5.exists():
-            df = pd.read_hdf(result_h5, key="data")
-        elif result_pq.exists():
-            df = pd.read_parquet(result_pq)
-        else:
-            return False, f"无 result.h5/parquet (耗时 {elapsed:.1f}s)"
-
-        rows = len(df)
-        stocks = df.index.get_level_values("instrument").nunique()
-        idx0 = df.index.names[0]
-        date_min = df.index.get_level_values(idx0).min()
-        date_max = df.index.get_level_values(idx0).max()
-        info = f"✅ {rows:,}行, {stocks}只, {date_min.date()}~{date_max.date()}, {elapsed:.1f}s"
-        return True, info
-
-    except Exception as e:
-        elapsed = time.time() - start
-        err_msg = str(e)[:200]
-        return False, f"❌ {err_msg} ({elapsed:.1f}s)"
+# ── 从 batch_recompute_factors 导入公共函数（避免重复实现）─────────────────────
+from batch_recompute_factors import get_sessions, copy_data_to_session, recompute_factor as run_factor
 
 
 def compute_ic(factor_df: pd.Series, returns_df: pd.Series, forward_days: int) -> float:

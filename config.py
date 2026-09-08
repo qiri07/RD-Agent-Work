@@ -22,9 +22,12 @@ FACTOR_SOURCE = GIT_IGNORE / "factor_implementation_source_data"
 FACTOR_SOURCE_DEBUG = GIT_IGNORE / "factor_implementation_source_data_debug"
 RDAGENT_WORKSPACE = GIT_IGNORE / "RD-Agent_workspace"
 
-# 主要数据文件
-DAILY_PV_FULL_PQ = FACTOR_SOURCE / "daily_pv_full.parquet"
-DAILY_PV_PQ = FACTOR_SOURCE / "daily_pv.parquet"
+# 主要数据文件 — 使用 trade-krono-cli 转换后的干净数据
+DAILY_PV_FULL_PQ = FACTOR_SOURCE / "daily_pv_full.parquet"  # 去重后完整数据（推荐）
+DAILY_PV_FULL_CORRECTED_PQ = FACTOR_SOURCE / "daily_pv_full_corrected.parquet"  # 备用：矫正后数据
+# DAILY_PV_PARQUET 已废弃：daily_pv.parquet 会被 download_full_astock.py 覆盖为截断数据
+# 别名：DAILY_PV_FULL_PQ 也常被引用为 DAILY_PV_PQ
+DAILY_PV_PQ = DAILY_PV_FULL_PQ
 IC_RESULTS_NEW_PQ = FACTOR_SOURCE / "ic_scan_results_new.parquet"
 IC_RESULTS_NEW_CSV = PROJECT_ROOT / "ic_scan_results_new.csv"
 TOP10_STOCKS_CSV = PROJECT_ROOT / "top10_stocks_new.csv"
