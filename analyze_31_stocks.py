@@ -36,7 +36,7 @@ HOLD = cfg.BACKTEST_HOLD_DAYS
 SPLIT_CURR = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_CURR or "2026-09-02")
 SPLIT_PREV = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_PREV or "2026-09-01")
 WS = cfg.RDAGENT_WORKSPACE
-SRC = cfg.FACTOR_SOURCE_DEBUG / "daily_pv_clean.h5"
+SRC = cfg.FACTOR_SOURCE_DEBUG_CLEAN_H5
 
 TOP_FIDS = [
     "02d7dce95b7f410aa3ba2f8c2ab29b57",
@@ -279,7 +279,7 @@ def main():
                 vals = fdf.loc[:, code]
                 vals = vals[np.isfinite(vals)].ffill().fillna(0)
                 stock_factor_matrix[fid][si] = vals
-            except:
+            except Exception:
                 stock_factor_matrix[fid][si] = None
 
     # 对于每个日期，计算横截面标准化后合成
@@ -296,7 +296,7 @@ def main():
                         v = stock_factor_matrix[fid][si].loc[d]
                         if np.isfinite(v):
                             vals.append(v)
-                    except:
+                    except Exception:
                         pass
             if vals:
                 scores[si] = np.mean(vals)
@@ -450,7 +450,7 @@ def main():
                     p2 = next((e[1] for e in stock_date_idx[si] if e[0] == fwd_d[0]), None)
                     if p1 and p1 > 0 and p2 and p2 > 0:
                         frvals[si] = (p2 / p1 - 1) * 100
-                except:
+                except Exception:
                     continue
             if len(fvals) < 5 or len(frvals) < 5:
                 continue

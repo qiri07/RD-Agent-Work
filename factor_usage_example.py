@@ -244,7 +244,7 @@ def save_factor_data():
                 factor_data = pd.read_hdf(result_file, key='data')
                 factor_name = factor_data.columns[0]
                 all_factors[factor_name] = factor_data[factor_name]
-            except:
+            except Exception:
                 continue
     
     # 保存所有因子

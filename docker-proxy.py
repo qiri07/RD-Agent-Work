@@ -11,7 +11,7 @@ def forward(src, dst):
             if not data:
                 break
             dst.sendall(data)
-    except:
+    except Exception:
         pass
     finally:
         src.close()

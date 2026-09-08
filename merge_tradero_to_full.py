@@ -23,7 +23,7 @@ import pandas as pd
 # ── 路径配置 ──
 BASE = Path(__file__).parent
 TRADERO_CACHE_DB = Path(
-    "/run/media/onai/MyDisk/Work/trade-krono-cli/outputs/cache/pipeline_cache.db"
+    os.getenv("TRADERO_CACHE_DB", str(BASE.parent / "trade-krono-cli" / "outputs" / "cache" / "pipeline_cache.db"))
 )
 OUT_DIR_MAIN = BASE / "git_ignore_folder" / "factor_implementation_source_data"
 OUT_DIR_DEBUG = BASE / "git_ignore_folder" / "factor_implementation_source_data_debug"

@@ -80,7 +80,7 @@ class FactorAnalyzer:
                         if 'factor.name = ' in line:
                             return line.split("'")[1]
                 return "Unknown"
-        except:
+        except Exception:
             return "Unknown"
     
     def analyze_factor_quality(self):

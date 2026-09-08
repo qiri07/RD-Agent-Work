@@ -33,6 +33,9 @@ IC_RESULTS_NEW_CSV = PROJECT_ROOT / "ic_scan_results_new.csv"
 TOP10_STOCKS_CSV = PROJECT_ROOT / "top10_stocks_new.csv"
 FULL_STOCK_SELECTION_CSV = PROJECT_ROOT / "full_factor_stock_selection.csv"
 
+# Debug 数据集路径（用于 analyze_31_stocks 等局部分析脚本）
+FACTOR_SOURCE_DEBUG_CLEAN_H5 = FACTOR_SOURCE_DEBUG / "daily_pv_clean.h5"
+
 # ═══════════════════════════════════════════════════════════
 # 飞书 Webhook
 # ═══════════════════════════════════════════════════════════
@@ -42,7 +45,7 @@ if _FEISHU_ENV:
     FEISHU_WEBHOOK_URL = _FEISHU_ENV
 else:
     # 从 token_step.txt 读取（如存在）
-    _token_file = Path("/run/media/onai/MyDisk/Work/files/token_step.txt")
+    _token_file = PROJECT_ROOT.parent / "files" / "token_step.txt"
     if _token_file.exists():
         for line in _token_file.read_text().splitlines():
             if line.startswith("FEISHU_WEBHOOK_URL="):

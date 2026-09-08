@@ -3,7 +3,7 @@
 # 用法: bash daily_pipeline.sh
 # crontab: 30 16 * * 1-5 cd /path/to/project && bash daily_pipeline.sh
 
-set -e
+set -eo pipefail
 
 PROJECT_ROOT="/run/media/onai/MyDisk/Work/RD-Agent-Work"
 LOG_DIR="$PROJECT_ROOT/log"
@@ -27,16 +27,7 @@ source rdagent-env/bin/activate
 
 TOTAL_START=$(date +%s)
 
-# ── 步骤 0: 数据质量检查与矫正 ───────────────────────
-log "\n🔍 步骤 0/5: 数据质量检查与矫正..."
-STEP0_START=$(date +%s)
-
-python3 data_corrector.py --dry-run 2>&1 | tee -a "$LOG_FILE"
-
-STEP0_END=$(date +%s)
-log "  ✅ 数据质量检查完成 (${(($STEP0_END - $STEP0_START))}s)"
-
-# ── 步骤 1: 增量更新数据 ──────────────────────────────
+# ── 步骤 1: 增量更新数据（必须先于数据校验） ────────────────────
 log "\n📥 步骤 1/5: 增量下载今日数据..."
 STEP1_START=$(date +%s)
 
@@ -48,6 +39,15 @@ fi
 
 STEP1_END=$(date +%s)
 log "  ✅ 数据更新完成 (${(($STEP1_END - $STEP1_START))}s)"
+
+# ── 步骤 0: 数据质量检查与矫正 ───────────────────────
+log "\n🔍 步骤 0/5: 数据质量检查与矫正..."
+STEP0_START=$(date +%s)
+
+python3 data_corrector.py --dry-run 2>&1 | tee -a "$LOG_FILE"
+
+STEP0_END=$(date +%s)
+log "  ✅ 数据质量检查完成 (${(($STEP0_END - $STEP0_START))}s)"
 
 # ── 步骤 2: 批量重算因子 ──────────────────────────────
 log "\n🧮 步骤 2/5: 批量重算因子..."

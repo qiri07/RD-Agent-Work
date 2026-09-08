@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore')
 import config as cfg
 
 WORKSPACE = cfg.RDAGENT_WORKSPACE
-SOURCE_H5 = cfg.FACTOR_SOURCE_DEBUG / "daily_pv_temp.h5"
+SOURCE_PQ = cfg.DAILY_PV_FULL_PQ  # 使用去重后完整数据（推荐）
 
 INITIAL_CAPITAL = cfg.BACKTEST_INITIAL_CAPITAL
 COMMISSION = cfg.BACKTEST_COMMISSION_RATE
@@ -68,10 +68,13 @@ def load_all_factors():
 
 
 def load_prices():
-    df = pd.read_hdf(SOURCE_H5, key='data')
+    """从 Parquet 加载价格数据，转 HDF5 内存格式"""
+    df = pd.read_parquet(SOURCE_PQ)
     # 兼容不同的索引名
     if df.index.names == ['date', 'instrument']:
         df.index = df.index.set_names(['datetime', 'instrument'])
+    elif df.index.names != ['datetime', 'instrument']:
+        df.index.names = ['datetime', 'instrument']
     df = df.sort_index()
     df = df[~df.index.duplicated(keep='first')]
     # 复权处理（排除 2026-09-02 的大拆分）

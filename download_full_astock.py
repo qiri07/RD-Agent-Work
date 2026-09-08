@@ -140,7 +140,7 @@ def main():
                         "$factor": 1.0,
                     })
                     count += 1
-                except:
+                except Exception:
                     pass
         except Exception as e:
             print(f"  {code} error: {e}")
