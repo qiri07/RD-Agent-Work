@@ -13,37 +13,21 @@ import numpy as np
 import pandas as pd
 from scipy.stats import rankdata
 
-from trading_rules_core import Board, get_board, get_limit_pct
+from memory_utils import rss_mb, check_memory
 
 
-# ═══════════════════════════════════════════════════════════
-# 内存工具函数
-# ═══════════════════════════════════════════════════════════
-def rss_mb():
-    """获取当前进程的 RSS（MB）"""
-    import resource
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
-
-
-def check_memory(tag="", soft_limit=2000, hard_limit=4000):
-    """内存检查，超限时打印警告"""
-    mem = rss_mb()
-    if mem > hard_limit:
-        print(f"[FATAL] {tag}: 内存超限 {mem:.0f}MB > {hard_limit}MB，跳过")
-        return False
-    if mem > soft_limit:
-        print(f"[WARN]  {tag}: 内存 {mem:.0f}MB > {soft_limit}MB")
-    return True
-
-
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════
 # 数据加载工具
-# ═══════════════════════════════════════════════════════════
-def load_returns_chunked(source_path: Path, year_start=2023, year_end=2026) -> dict:
+# ═══════════════════════════════════════════════
+def load_returns_chunked(source_path: Path, year_start=2023, year_end=2026) -> dict | None:
     """
     分年加载 forward returns，避免一次性加载大文件到内存
-    返回: {year: Series}
+    返回: {year: Series} 或 None（当文件不存在时）
     """
+    if not source_path.exists():
+        print(f"[WARN] 返回数据文件不存在: {source_path}")
+        return None
+
     if source_path.suffix == '.parquet':
         r_all = pd.read_parquet(source_path).iloc[:, 0]
     else:
@@ -88,9 +72,9 @@ def load_factor_chunked(session_dir: Path, chunk_years=None):
     return fs
 
 
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════
 # IC 计算
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════
 def compute_ic_chunked(factor_chunks: dict, returns_chunks: dict) -> tuple:
     """
     分年计算 IC，返回 (全局IC, {year: ic_value})

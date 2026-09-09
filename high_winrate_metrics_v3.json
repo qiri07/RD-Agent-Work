@@ -1,0 +1,16 @@
+{
+  "total_return_pct": -85.7,
+  "annual_return_pct": -38.34,
+  "sharpe_ratio": -1.921,
+  "max_drawdown_pct": -85.93,
+  "win_rate_pct": 42.6,
+  "total_trades": 4853,
+  "win_trades": 2065,
+  "profit_factor": 1.13,
+  "final_nav": 0.143,
+  "selected_factors": 6,
+  "top_k": 15,
+  "hold_days": 5,
+  "latest_date": "2026-09-08",
+  "version": "v3_stable"
+}

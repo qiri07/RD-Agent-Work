@@ -174,7 +174,8 @@ class DataValidator:
                             'near_5_ratio': round(near_5_ratio * 100, 1),
                             'expected_limit': f"{expected_limit*100:.0f}%"
                         })
-            except Exception:
+            except Exception as e:
+                # 记录异常但不中断验证流程
                 pass
 
         if st_suspects:
@@ -276,7 +277,7 @@ class DataValidator:
     def _calc_limit_series(self, prev_close: pd.Series) -> tuple[pd.Series, pd.Series]:
         """计算每只股票的涨跌停价序列"""
         codes = self.prices.index.get_level_values('instrument')
-        limits = codes.apply(lambda c: get_limit_pct(get_board(c)))
+        limits = codes.map(lambda c: get_limit_pct(get_board(c)))
         limit_up = prev_close * (1 + limits)
         limit_down = prev_close * (1 - limits)
         return limit_up, limit_down
@@ -334,3 +335,9 @@ def print_trading_rules_summary():
     print(f"    连续竞价: 09:30-11:30, 13:00-15:00")
     print(f"    ST股涨跌幅: ±5%")
     print("=" * 60)
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--rules":
+        print_trading_rules_summary()

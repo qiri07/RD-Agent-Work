@@ -2,6 +2,7 @@
 """
 31只标的因子分析与回测 — 精简高效版
 =====================================
+架构：使用 engine/ 模块
 """
 import pandas as pd
 import numpy as np
@@ -10,6 +11,10 @@ import warnings, time
 warnings.filterwarnings('ignore')
 
 import config as cfg
+from engine.pricing import PriceEngine
+from engine.backtest import BacktestEngine, create_backtest_engine
+from engine.factor import FactorEngine, create_factor_engine
+from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
 
 # 目标股票
 TARGET = {
@@ -28,13 +33,18 @@ TARGET = {
 CODES = list(TARGET.keys())
 N = len(CODES)
 
+# 回测参数
 ICAP = cfg.BACKTEST_INITIAL_CAPITAL
 COMM = cfg.BACKTEST_COMMISSION_RATE
 SLIP = cfg.BACKTEST_SLIPPAGE_RATE
 MIN_TR = cfg.BACKTEST_MIN_TRADE_VALUE
 HOLD = cfg.BACKTEST_HOLD_DAYS
-SPLIT_CURR = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_CURR or "2026-09-02")
-SPLIT_PREV = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_PREV or "2026-09-01")
+
+# 拆分日期
+_split_prev, _split_curr = cfg.get_split_dates()
+SPLIT_PREV = pd.Timestamp(_split_prev) if _split_prev else pd.Timestamp("2026-09-01")
+SPLIT_CURR = pd.Timestamp(_split_curr) if _split_curr else pd.Timestamp("2026-09-02")
+
 WS = cfg.RDAGENT_WORKSPACE
 SRC = cfg.FACTOR_SOURCE_DEBUG_CLEAN_H5
 
@@ -54,6 +64,17 @@ def main():
     print("  31只标的因子分析与回测")
     print("=" * 70)
 
+    # 初始化引擎
+    price_engine = PriceEngine()
+    backtest_engine = create_backtest_engine(
+        initial_capital=ICAP,
+        commission_rate=COMM,
+        slippage_rate=SLIP,
+        min_trade_value=MIN_TR
+    )
+    factor_engine = create_factor_engine(WS)
+    perf_analyzer = create_performance_analyzer(ICAP)
+
     # ===== 1. 加载价格 =====
     print("\n📂 加载价格数据...")
     t1 = time.time()
@@ -63,23 +84,7 @@ def main():
     pv = pv.sort_index()[~pv.index.duplicated(keep='first')]
 
     # 复权
-    try:
-        pc_prev = pv.xs(SPLIT_PREV, level='datetime')['$close']
-        pc_curr = pv.xs(SPLIT_CURR, level='datetime')['$close']
-    except KeyError:
-        pass
-    else:
-        common = pc_prev.index.intersection(pc_curr.index)
-        ratios = pc_prev[common] / pc_curr[common]
-        splits = ratios[ratios > 3.0].index.tolist()
-        adj = pv.copy()
-        mask = pv.index.get_level_values('datetime') < SPLIT_CURR
-        for stock in splits:
-            sm = mask & (pv.index.get_level_values('instrument') == stock)
-            r = ratios[stock]
-            for col in ['$open', '$close', '$high', '$low']:
-                adj.loc[sm, col] = pv.loc[sm, col] * r
-        pv = adj
+    pv, _ = price_engine.compute_adjusted_prices(pv)
 
     prices = pv[['$open', '$close']].to_numpy()
     date_idx = pv.index.get_level_values('datetime').unique()
@@ -88,10 +93,9 @@ def main():
     VDATES = [date_map[d] for d in valid_dates]
     print(f"  {len(pv):,}行 loaded in {time.time()-t1:.1f}s, {len(valid_dates)} trading days")
 
-    # 构建快速查找: (date_idx, stock_idx) -> price
+    # 构建快速查找
     inst_to_idx = {code: i for i, code in enumerate(CODES)}
-    # 对每只股票，找其在价格数组中的行号范围
-    stock_date_idx = {}  # stock_idx -> sorted list of (global_date_idx, close_price)
+    stock_date_idx = {}
     for si, code in enumerate(CODES):
         rows = pv.xs(code, level=1)[['$open', '$close']]
         rows = rows[rows.index < SPLIT_CURR].sort_index()
@@ -102,34 +106,50 @@ def main():
     # ===== 2. 加载因子 =====
     print("\n📂 加载因子得分...")
     t1 = time.time()
-    factor_data = {}
-    for fid in TOP_FIDS:
-        h5 = WS / fid / "result.h5"
-        if not h5.exists():
-            continue
-        try:
-            df = pd.read_hdf(h5, key="data")
-            fname = df.columns[0]
-            df = df.rename(columns={fname: fid})
-            idx = df.index
-            if idx.names == ["instrument", "date"]:
-                df.index = pd.MultiIndex.from_tuples([(t[1], t[0]) for t in idx], names=["datetime", "instrument"])
-            elif idx.names == [None, None]:
-                first = idx[0]
-                if isinstance(first[0], str) and first[0].startswith(("SH","SZ","BJ")):
-                    df.index = pd.MultiIndex.from_tuples([(t[1], t[0]) for t in idx], names=["datetime", "instrument"])
-                else:
-                    df.index.names = ["datetime", "instrument"]
-            elif idx.names[0] != "datetime":
-                df.index.names = ["datetime", "instrument"]
-            df = df.ffill().fillna(0)[~df.index.duplicated(keep='first')]
-            factor_data[fid] = df[fid]
-        except Exception as e:
-            print(f"  加载 {fid} 失败: {e}")
-
+    factor_data = factor_engine.load_factors(TOP_FIDS)
     print(f"  因子加载完成 in {time.time()-t1:.1f}s, {len(factor_data)} factors")
 
     # ===== 3. 单只股票表现 =====
+    print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CODES)
+
+    # ===== 4. 等权买入持有31只 =====
+    print("\n" + "=" * 70)
+    print("  二、策略1: 等权买入持有31只股票")
+    print("=" * 70)
+    hold_result = run_equal_weight_hold(
+        valid_dates, stock_date_idx, CODES, backtest_engine
+    )
+    hold_metrics = perf_analyzer.analyze(hold_result['daily_value'], hold_result['trades'])
+    print(perf_analyzer.generate_report(hold_metrics, "策略1: 等权买入持有"))
+    save_results('backtest_31_hold', hold_result)
+
+    # ===== 5. 因子轮动回测 =====
+    print("\n" + "=" * 70)
+    print("  三、策略2: 多因子轮动(Top10, 5日持仓)")
+    print("=" * 70)
+    rotation_result = run_factor_rotation(
+        valid_dates, stock_date_idx, CODES, factor_data, backtest_engine
+    )
+    rotation_metrics = perf_analyzer.analyze(rotation_result['daily_value'], rotation_result['trades'])
+    print(perf_analyzer.generate_report(rotation_metrics, "策略2: 因子轮动"))
+    save_results('backtest_31_rotation', rotation_result)
+
+    # ===== 6. 因子IC分析 =====
+    print("\n" + "=" * 70)
+    print("  四、因子IC分析（目标股票池）")
+    print("=" * 70)
+    analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, HOLD)
+
+    # ===== 7. 汇总 =====
+    print_summary(hold_metrics, rotation_metrics)
+
+    elapsed = time.time() - t0
+    print(f"\n  ⏱️  总耗时: {elapsed:.1f}s")
+    print("=" * 70)
+
+
+def print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CODES):
+    """打印单只股票表现"""
     print("\n" + "=" * 70)
     print("  一、单只股票买入持有表现")
     print("=" * 70)
@@ -166,11 +186,9 @@ def main():
         print(f"  {r['code']:>10}  {r['name']:>8}  {s}{r['return']:>6.2f}%  {s}{r['ann_return']:>6.2f}%  "
               f"{r['max_dd']:>+7.2f}%  {r['start']}~{r['end']}")
 
-    # ===== 4. 等权买入持有31只 =====
-    print("\n" + "=" * 70)
-    print("  二、策略1: 等权买入持有31只股票")
-    print("=" * 70)
 
+def run_equal_weight_hold(valid_dates, stock_date_idx, CODES, engine):
+    """运行等权买入持有策略"""
     # 找每只股票的起始日期索引
     stock_first = {}
     for si, code in enumerate(CODES):
@@ -178,100 +196,28 @@ def main():
             stock_first[si] = stock_date_idx[si][0][0]
     if not stock_first:
         print("  无有效数据")
-        return
+        return {'daily_value': [], 'trades': []}
+    
     start_idx = max(stock_first.values())
-
-    alloc_per = ICAP / N
-    cash = ICAP
-    positions = {}  # si -> {'shares': n, 'entry_price': p, 'entry_idx': i}
-    daily_nav = []
-    trades = []
-
-    for di, d in enumerate(valid_dates):
-        if di < start_idx:
+    
+    # 使用回测引擎
+    price_map = {}
+    for si, code in enumerate(CODES):
+        if si not in stock_date_idx:
             continue
-        if di == start_idx:
-            # 建仓
-            for si in stock_first:
-                entries = stock_date_idx[si]
-                # 找到di对应的条目
-                row_idx = None
-                for e_di, e_close in entries:
-                    if e_di == di:
-                        row_idx = e_di
-                        bp = e_close
-                        break
-                if row_idx is None or bp <= 0:
-                    continue
-                inv = alloc_per * 0.99
-                if inv < MIN_TR:
-                    continue
-                shares = int(inv / bp / 100) * 100
-                if shares <= 0:
-                    continue
-                cost = shares * bp * (1 + COMM + SLIP)
-                if cost > cash:
-                    shares = int(cash / bp / 100) * 100
-                    if shares <= 0:
-                        continue
-                    cost = shares * bp * (1 + COMM + SLIP)
-                cash -= cost
-                positions[si] = {'shares': shares, 'price': bp, 'idx': di}
-                trades.append({'date': d, 'action': 'BUY', 'stock': CODES[si], 'shares': shares, 'price': bp})
-            total = cash + sum(positions[si]['shares'] * 
-                              next((e[1] for e in stock_date_idx[si] if e[0] == di), 0)
-                              for si in positions)
-            daily_nav.append({'date': d, 'value': total})
-            continue
+        for di, close in stock_date_idx[si]:
+            if di < len(valid_dates):
+                price_map[(valid_dates[di], code)] = {'open': close, 'close': close}
+    
+    target_stocks = list(stock_first.keys())
+    result = engine.run_fixed_hold(valid_dates, price_map, target_stocks, hold_days=0)
+    return {'daily_value': result.daily_value, 'trades': result.trades}
 
-        # 每日净值
-        total = cash
-        for si in list(positions.keys()):
-            entry = next((e[1] for e in stock_date_idx[si] if e[0] == di), None)
-            if entry:
-                total += positions[si]['shares'] * entry
-        daily_nav.append({'date': d, 'value': total})
 
-    # 最后平仓
-    last_d = valid_dates[-1]
-    last_di = len(valid_dates) - 1
-    final_val = cash
-    for si, pos in positions.items():
-        entry = next((e[1] for e in stock_date_idx[si] if e[0] == last_di), None)
-        if entry:
-            sp = entry * (1 - COMM - SLIP)
-            tv = pos['shares'] * sp
-            final_val += tv
-            trades.append({'date': last_d, 'action': 'SELL', 'stock': CODES[si],
-                           'shares': pos['shares'], 'price': entry,
-                           'pnl_pct': (entry / pos['price'] - 1) * 100})
-
-    nav = pd.Series([v['value'] for v in daily_nav], index=[v['date'] for v in daily_nav]) / ICAP
-    tr = (nav.iloc[-1] - 1) * 100
-    dy = (nav.index[-1] - nav.index[0]).days / 365.25
-    ar = (nav.iloc[-1] ** (1/dy) - 1) * 100 if dy > 0 else tr
-    dr = nav.pct_change().dropna()
-    sh = (dr.mean() * 252 - 0.02) / (dr.std() * np.sqrt(252)) if dr.std() > 0 else 0
-    mdd = (nav / nav.cummax() - 1).min() * 100
-    sells = [t for t in trades if t['action'] == 'SELL']
-    wins = [t for t in sells if t.get('pnl_pct', 0) > 0]
-    wr = len(wins) / len(sells) * 100 if sells else 0
-
-    print(f"  区间: {nav.index[0].date()} ~ {nav.index[-1].date()} ({len(nav)}天)")
-    print(f"  总收益: {tr:+.2f}%  年化: {ar:+.2f}%  夏普: {sh:.3f}")
-    print(f"  最大回撤: {mdd:.2f}%  胜率: {wr:.1f}%")
-    print(f"  最终净值: {nav.iloc[-1]:.4f}  ({nav.iloc[-1]*ICAP:,.0f}元)")
-
-    # ===== 5. 因子轮动回测 =====
-    print("\n" + "=" * 70)
-    print("  三、策略2: 多因子轮动(Top10, 5日持仓)")
-    print("=" * 70)
-
-    # 预计算每日因子得分（标准化后合成）
-    print("  计算因子合成得分...")
-    t1 = time.time()
-    # 提取每只股票在每只因子上的得分时间序列
-    stock_factor_matrix = {}  # {fid: {si: [val_at_each_date]}}
+def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine):
+    """运行因子轮动策略"""
+    # 预计算每日因子得分
+    stock_factor_matrix = {}
     for fid, fdf in factor_data.items():
         stock_factor_matrix[fid] = {}
         for si, code in enumerate(CODES):
@@ -282,13 +228,12 @@ def main():
             except Exception:
                 stock_factor_matrix[fid][si] = None
 
-    # 对于每个日期，计算横截面标准化后合成
-    composite_scores = {}  # date_idx -> {si: composite_score}
+    # 计算综合得分
+    composite_scores = {}
     for di in range(len(valid_dates)):
         d = valid_dates[di]
         scores = {}
-        for si in range(N):
-            # 取该日所有因子的均值作为综合得分
+        for si in range(len(CODES)):
             vals = []
             for fid in factor_data:
                 if si in stock_factor_matrix.get(fid, {}) and stock_factor_matrix[fid][si] is not None:
@@ -306,131 +251,33 @@ def main():
             std_v = arr.std() if arr.std() > 0 else 1
             composite_scores[di] = {si: (v - mean_v) / std_v for si, v in scores.items()}
 
-    print(f"  因子得分计算完成 in {time.time()-t1:.1f}s")
+    # 构建信号
+    signals = {}
+    for di, scores in composite_scores.items():
+        target_scores = {si: v for si, v in scores.items() if si < len(CODES)}
+        if len(target_scores) >= 10:
+            selected = sorted(target_scores, key=target_scores.get, reverse=True)[:10]
+            signals[di] = [CODES[si] for si in selected]
 
-    # 轮动回测
-    cash = ICAP
-    positions = {}
-    pending = {}
-    daily_nav2 = []
-    trades2 = []
+    # 构建价格映射
+    price_map = {}
+    for si, code in enumerate(CODES):
+        if si in stock_date_idx:
+            for di, close in stock_date_idx[si]:
+                if di < len(valid_dates):
+                    price_map[(valid_dates[di], code)] = {'open': close, 'close': close}
 
-    for di, d in enumerate(valid_dates):
-        # 到期卖出
-        to_sell = [si for si, pi in pending.items() if pi <= di]
-        for si in to_sell:
-            if si in positions:
-                entry = next((e[1] for e in stock_date_idx[si] if e[0] == di), None)
-                if entry and entry > 0:
-                    sp = entry * (1 - COMM - SLIP)
-                    tv = positions[si]['shares'] * sp
-                    cash += tv
-                    trades2.append({'date': d, 'action': 'SELL', 'stock': CODES[si],
-                                    'shares': positions[si]['shares'], 'price': entry,
-                                    'pnl_pct': (entry / positions[si]['price'] - 1) * 100})
-                del positions[si]
-        for si in to_sell:
-            pending.pop(si, None)
+    # 运行回测
+    result = engine.run(valid_dates, price_map, signals, hold_days=5, top_k=10)
+    return {'daily_value': result.daily_value, 'trades': result.trades}
 
-        # 净值
-        total = cash
-        for si, pos in positions.items():
-            entry = next((e[1] for e in stock_date_idx[si] if e[0] == di), None)
-            if entry:
-                total += pos['shares'] * entry
-        daily_nav2.append({'date': d, 'value': total})
 
-        # 选股(T-1)
-        if di == 0:
-            continue
-        prev_di = di - 1
-        if prev_di not in composite_scores:
-            continue
-        scores = composite_scores[prev_di]
-        # 只选目标股票
-        target_scores = {si: v for si, v in scores.items() if si < N}
-        if len(target_scores) < 10:
-            continue
-        selected = set(sorted(target_scores, key=target_scores.get, reverse=True)[:10])
-
-        # 调仓
-        for si in list(positions.keys()):
-            if si not in selected:
-                entry = next((e[1] for e in stock_date_idx[si] if e[0] == di), None)
-                if entry and entry > 0:
-                    sp = entry * (1 - COMM - SLIP)
-                    tv = positions[si]['shares'] * sp
-                    cash += tv
-                    trades2.append({'date': d, 'action': 'SELL', 'stock': CODES[si],
-                                    'shares': positions[si]['shares'], 'price': entry,
-                                    'pnl_pct': (entry / positions[si]['price'] - 1) * 100})
-                del positions[si]
-
-        alloc = total / 10
-        for si in selected:
-            if si in positions:
-                continue
-            entry = next((e for e in stock_date_idx[si] if e[0] == di), None)
-            if entry is None or entry[1] <= 0:
-                continue
-            bp = entry[1]
-            inv = min(alloc, cash * 0.99)
-            if inv < MIN_TR:
-                continue
-            shares = int(inv / bp / 100) * 100
-            if shares <= 0:
-                continue
-            cost = shares * bp * (1 + COMM + SLIP)
-            if cost > cash:
-                shares = int(cash / bp / 100) * 100
-                if shares <= 0:
-                    continue
-                cost = shares * bp * (1 + COMM + SLIP)
-            cash -= cost
-            positions[si] = {'shares': shares, 'price': bp}
-            trades2.append({'date': d, 'action': 'BUY', 'stock': CODES[si],
-                            'shares': shares, 'price': bp})
-            if HOLD > 0 and di + HOLD < len(valid_dates):
-                pending[si] = di + HOLD
-
-    # 最后平仓
-    last_di = len(valid_dates) - 1
-    for si in list(positions.keys()):
-        entry = next((e[1] for e in stock_date_idx[si] if e[0] == last_di), None)
-        if entry:
-            sp = entry * (1 - COMM - SLIP)
-            cash += positions[si]['shares'] * sp
-            trades2.append({'date': valid_dates[last_di], 'action': 'SELL', 'stock': CODES[si],
-                            'shares': positions[si]['shares'], 'price': entry,
-                            'pnl_pct': (entry / positions[si]['price'] - 1) * 100})
-
-    nav2 = pd.Series([v['value'] for v in daily_nav2], index=[v['date'] for v in daily_nav2]) / ICAP
-    tr2 = (nav2.iloc[-1] - 1) * 100
-    dy2 = (nav2.index[-1] - nav2.index[0]).days / 365.25
-    ar2 = (nav2.iloc[-1] ** (1/max(dy2,0.01)) - 1) * 100 if dy2 > 0 else tr2
-    dr2 = nav2.pct_change().dropna()
-    sh2 = (dr2.mean() * 252 - 0.02) / (dr2.std() * np.sqrt(252)) if dr2.std() > 0 else 0
-    mdd2 = (nav2 / nav2.cummax() - 1).min() * 100
-    sells2 = [t for t in trades2 if t['action'] == 'SELL']
-    wins2 = [t for t in sells2 if t.get('pnl_pct', 0) > 0]
-    wr2 = len(wins2) / len(sells2) * 100 if sells2 else 0
-
-    print(f"  区间: {nav2.index[0].date()} ~ {nav2.index[-1].date()} ({len(nav2)}天)")
-    print(f"  总收益: {tr2:+.2f}%  年化: {ar2:+.2f}%  夏普: {sh2:.3f}")
-    print(f"  最大回撤: {mdd2:.2f}%  胜率: {wr2:.1f}%")
-    print(f"  最终净值: {nav2.iloc[-1]:.4f}  ({nav2.iloc[-1]*ICAP:,.0f}元)")
-
-    # ===== 6. 因子IC分析 =====
-    print("\n" + "=" * 70)
-    print("  四、因子IC分析（目标股票池）")
-    print("=" * 70)
-
-    # 对每个因子，计算与未来收益的IC
+def analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, hold_days):
+    """分析因子IC"""
     ic_results = []
     for fid in factor_data:
         ics = []
-        for di, d in enumerate(valid_dates[:-HOLD]):
-            # 当前因子值（仅目标股票）
+        for di, d in enumerate(valid_dates[:-hold_days]):
             fvals = {}
             frvals = {}
             for si, code in enumerate(CODES):
@@ -439,11 +286,10 @@ def main():
                     if not np.isfinite(fv):
                         continue
                     fvals[si] = fv
-                    # 向前收益
                     fwd_entries = [(e[0], e[1]) for e in stock_date_idx[si] if e[0] > di]
                     if not fwd_entries:
                         continue
-                    fwd_d = min(fwd_entries, key=lambda x: abs(x[0] - (di + HOLD)))
+                    fwd_d = min(fwd_entries, key=lambda x: abs(x[0] - (di + hold_days)))
                     if fwd_d[0] >= len(valid_dates):
                         continue
                     p1 = next((e[1] for e in stock_date_idx[si] if e[0] == di), None)
@@ -481,26 +327,28 @@ def main():
         print(f"  {rank:>3}  {r['fid']:>20}  {r['mean_ic']:>+7.4f}  {r['abs_mean']:>7.4f}  "
               f"{r['ir']:>6.3f}  {r['pos_ratio']:>6.0%}  {r['n_days']:>5}")
 
-    # ===== 7. 汇总 =====
+
+def print_summary(hold_metrics, rotation_metrics):
+    """打印汇总"""
     print(f"\n{'='*70}")
     print("  五、策略对比汇总")
     print(f"{'='*70}")
     print(f"  {'策略':<30}  {'总收益%':>10}  {'年化%':>10}  {'夏普':>8}  {'回撤%':>10}")
     print(f"  {'─'*30}  {'─'*10}  {'─'*10}  {'─'*8}  {'─'*10}")
-    print(f"  {'等权买入持有(31只)':<30}  {tr:+>9.2f}%  {ar:+>9.2f}%  {sh:>8.3f}  {mdd:>+9.2f}%")
-    print(f"  {'因子轮动(Top10,5日)':<30}  {tr2:+>9.2f}%  {ar2:+>9.2f}%  {sh2:>8.3f}  {mdd2:>+9.2f}%")
+    print(f"  {'等权买入持有(31只)':<30}  {hold_metrics.total_return_pct:+>9.2f}%  "
+          f"{hold_metrics.annual_return_pct:+>9.2f}%  {hold_metrics.sharpe_ratio:>8.3f}  "
+          f"{hold_metrics.max_drawdown_pct:>+9.2f}%")
+    print(f"  {'因子轮动(Top10,5日)':<30}  {rotation_metrics.total_return_pct:+>9.2f}%  "
+          f"{rotation_metrics.annual_return_pct:+>9.2f}%  {rotation_metrics.sharpe_ratio:>8.3f}  "
+          f"{rotation_metrics.max_drawdown_pct:>+9.2f}%")
 
-    # 保存
-    nav.to_csv('backtest_31_hold_nav.csv')
-    nav2.to_csv('backtest_31_rotation_nav.csv')
-    pd.DataFrame(trades).to_csv('backtest_31_hold_trades.csv', index=False)
-    pd.DataFrame(trades2).to_csv('backtest_31_rotation_trades.csv', index=False)
-    pd.DataFrame(perf).to_csv('backtest_31_individual_perf.csv', index=False)
 
-    elapsed = time.time() - t0
-    print(f"\n  ⏱️  总耗时: {elapsed:.1f}s")
-    print(f"  💾 已保存: backtest_31_*.csv")
-    print(f"{'='*70}")
+def save_results(prefix, result):
+    """保存结果"""
+    df = pd.DataFrame(result['daily_value'])
+    if not df.empty:
+        df.set_index('date')['value'].to_csv(f'{prefix}_nav.csv')
+    pd.DataFrame(result['trades']).to_csv(f'{prefix}_trades.csv', index=False)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,9 @@ PROJECT_NAME = FEISHU_PROJECT_NAME
 FEISHU_TIMEOUT_SEC = 10          # Webhook 请求超时（秒）
 FEISHU_FID_TRUNC_LEN = 20        # factor_id 显示截断长度
 
+# CLI 入口需要的依赖
+import pandas as pd
+
 
 def _build_payload(text: str) -> dict:
     """构建飞书消息体"""
@@ -176,9 +179,6 @@ def send_combined_report(ic_df, stocks_df, top_n: int = 10) -> bool:
 
     return send_feishu("\n".join(parts))
 
-
-# CLI 入口
-import pandas as pd
 
 if __name__ == "__main__":
     import argparse

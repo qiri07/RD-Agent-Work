@@ -259,34 +259,29 @@ def correct_data(df: pd.DataFrame, apply_all: bool = True) -> tuple[pd.DataFrame
     """
     全面数据矫正
     """
+    events = detect_split_events(df)
+    issues = classify_data_issues(df)
+
+    corrected = df.copy()
+
+    # 1. 批量异常修正（拆分事件）
+    if apply_all and events:
+        corrected = correct_batch_anomalies(corrected, events)
+
+    # 2. 单只股票异常修正
+    if apply_all:
+        corrected = correct_single_stock_anomalies(corrected)
+
+    # 3. 交易规则修正
+    if apply_all:
+        corrected = apply_trading_rule_corrections(corrected)
+
     report = {
         'original_shape': list(df.shape),
         'corrections': {},
+        'split_events': len(events),
+        'issues': issues,
     }
-
-    print("  步骤1: 分析数据问题...")
-    issues = classify_data_issues(df)
-    report['issues'] = {
-        'split_events_count': len(issues['split_events']),
-        'batch_anomalies': issues['batch_anomalies'],
-        'extreme_price_stocks': len(issues['extreme_prices']),
-    }
-
-    corrected = df.copy()
-    if apply_all and issues['batch_anomalies']:
-        print("  步骤2: 修正批量异常...")
-        corrected = correct_batch_anomalies(corrected, issues['split_events'])
-
-    if apply_all:
-        print("  步骤3: 修正单只股票异常...")
-        corrected = correct_single_stock_anomalies(corrected)
-
-    print("  步骤4: 应用交易规则修正...")
-    corrected = apply_trading_rule_corrections(corrected)
-
-    report['corrections']['final_shape'] = list(corrected.shape)
-    report['corrections']['nan_close_count'] = int(corrected['$close'].isna().sum())
-    report['corrections']['total_rows_removed'] = report['corrections']['nan_close_count']
 
     return corrected, report
 
@@ -312,10 +307,8 @@ def main():
     print(f"\n{'='*60}")
     print("  矫正报告")
     print(f"{'='*60}")
-    print(f"  原始数据: {report['corrections'].get('original_shape', 'N/A')}")
-    print(f"  修正后:   {report['corrections'].get('final_shape', 'N/A')}")
-    print(f"  修正行数: {report['corrections'].get('total_rows_removed', 0):,}")
-    print(f"  NaN close: {report['corrections'].get('nan_close_count', 0):,}")
+    print(f"  原始数据: {report['original_shape']}")
+    print(f"  拆分事件: {report['split_events']} 个")
 
     if args.dry_run:
         print("\n  (仅报告模式，未保存)")

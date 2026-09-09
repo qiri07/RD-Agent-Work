@@ -155,7 +155,7 @@ python -m pytest tests/ -q            # Quiet mode
 python -m pytest tests/ --cov=.       # With coverage report
 ```
 
-**Current test coverage: 191 tests, 100% pass rate**
+**Current test coverage: 289 tests, 100% pass rate**
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -170,6 +170,10 @@ python -m pytest tests/ --cov=.       # With coverage report
 | `test_ic_computation.py` | 9 | 98% |
 | `test_factor_rule_corrector.py` | 14 | 98% |
 | `test_feishu_notify.py` | 7 | 99% |
+| `test_backtest_single_factors.py` | 22 | 100% |
+| `test_high_winrate_selection.py` | 23 | 100% |
+| `test_factor_scan_mem_optimized.py` | 16 | 100% |
+| `test_run_pipeline.py` | 21 | 100% |
 
 ## Data
 
@@ -185,7 +189,35 @@ python -m pytest tests/ --cov=.       # With coverage report
 - Python 3.11+ (virtualenv: `rdagent-env/`)
 - Dependencies: `pandas`, `numpy`, `scipy`, `pyarrow`, `h5py`
 
-## Recent Updates (2026-09-08)
+## Recent Updates (2026-09-09)
+
+### Architecture Refactoring
+- **New Modules**: Created `engine/` (pricing, backtest, factor, metrics, cache) and `factors/` (factor_selector)
+- **Refactored Scripts**: Reduced file sizes by 30-79% through modularization
+  - `backtest_top10.py`: 388 → 178 lines (↓54%)
+  - `high_winrate_stock_selection_v3.py`: 497 → 301 lines (↓39%)
+  - `high_winrate_stock_selection_v4.py`: 484 → 87 lines (↓78%)
+  - `high_winrate_stock_selection_v5.py`: 449 → 86 lines (↓79%)
+  - `high_winrate_stock_selection_v6.py`: 456 → 92 lines (↓79%)
+- **Logging System**: Added unified `logging_config.py` and integrated into all engine modules
+- **Memory Cache**: Added `engine/cache.py` with LRU caching for data loading
+
+### Bug Fixes
+- **Fixed**: pandas DatetimeIndex empty check in `engine/backtest.py`
+- **Fixed**: `nlargest()` API usage in tests
+- **Improved**: Exception handling with specific error types in `engine/factor.py`
+
+### Testing
+- **Added**: 82 new tests covering engine modules and factor selection
+- **Total**: 289 tests, 100% pass rate
+- **Coverage**: All core modules fully tested
+
+### Documentation
+- `ARCHITECTURE_REFACTOR.md`: Detailed architecture refactoring report
+- `COMPREHENSIVE_REVIEW.md`: 9-dimension comprehensive review
+- `FINAL_REVIEW_SUMMARY.md`: Final summary and action plan
+
+## Previous Updates (2026-09-08)
 
 - **Bug fixes**: Fixed int64 `LossySetitemError` in volume winsorize (`data_corrector.py`, `factor_rule_corrector.py`, `data_validator.py`)
 - **Bug fixes**: Fixed `.iloc[0]` crash on scalar MultiIndex lookup (`data_corrector.py`)
