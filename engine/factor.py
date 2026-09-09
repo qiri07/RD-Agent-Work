@@ -175,7 +175,7 @@ class FactorEngine:
         Returns:
             综合得分 Series
         """
-        if not factors:
+        if not factors or len(factors) == 0:
             return pd.Series(dtype=float)
         
         # 合并因子

@@ -67,6 +67,9 @@ class PerformanceAnalyzer:
             )
 
         df = df.set_index('date').sort_index()
+        # 确保日期索引是datetime类型
+        if not pd.api.types.is_datetime64_any_dtype(df.index):
+            df.index = pd.to_datetime(df.index)
         nav = df['value'] / self.initial_capital
 
         # 基础指标
