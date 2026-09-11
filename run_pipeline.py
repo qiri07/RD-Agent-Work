@@ -106,7 +106,7 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
 
     # 使用 engine 统一合成逻辑
     logger.info("合成综合得分...")
-    result_df = synthesize_daily_composite({fid: s.set_index("instrument")["factor_val"] for fid, s in factor_dict.items()})
+    result_df = synthesize_daily_composite({fid: s.set_index(["datetime", "instrument"])["factor_val"] for fid, s in factor_dict.items()})
     if result_df.empty:
         logger.error("综合得分为空")
         return None
