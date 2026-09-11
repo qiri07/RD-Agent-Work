@@ -6,7 +6,7 @@ Engine 模块初始化
 """
 from engine.pricing import PriceEngine, load_and_adjust_prices
 from engine.backtest import BacktestEngine, BacktestResult, create_backtest_engine
-from engine.factor import FactorEngine, create_factor_engine
+from engine.factor import FactorEngine, create_factor_engine, synthesize_daily_composite
 from engine.metrics import PerformanceAnalyzer, PerformanceMetrics, create_performance_analyzer
 from engine.cache import get_cache, clear_global_cache, load_cached_parquet, load_cached_hdf
 from engine.recompute import (
@@ -23,6 +23,7 @@ __all__ = [
     'create_backtest_engine',
     'FactorEngine',
     'create_factor_engine',
+    'synthesize_daily_composite',
     'PerformanceAnalyzer',
     'PerformanceMetrics',
     'create_performance_analyzer',

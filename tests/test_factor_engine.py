@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 import numpy as np
 
-from engine.factor import FactorEngine, create_factor_engine
+from engine.factor import FactorEngine, create_factor_engine, synthesize_daily_composite
 
 
 class TestFactorEngineNormalizeIndex(unittest.TestCase):
@@ -376,8 +376,78 @@ class TestFactorEngineComputeFactorICSummary(unittest.TestCase):
         """含缺失因子的汇总"""
         factor_ids = ['factor_0', 'missing_factor']
         result = self.engine.compute_factor_ic_summary(factor_ids, self.returns)
-        
+
         self.assertEqual(len(result), 1)  # 只返回存在的因子
+
+
+class TestSynthesizeDailyComposite(unittest.TestCase):
+    """测试 synthesize_daily_composite 公开函数"""
+
+    def test_basic_synthesis(self):
+        """基本合成：2因子3股票2日期，返回最新日结果"""
+        dates = pd.date_range('2024-01-01', periods=2, freq='B')
+        stocks = ['SH600000', 'SZ000001', 'SH600002']
+        idx = pd.MultiIndex.from_product([dates, stocks], names=['datetime', 'instrument'])
+        np.random.seed(42)
+        s1 = pd.Series(np.random.randn(6), index=idx)
+        s2 = pd.Series(np.random.randn(6), index=idx)
+
+        result = synthesize_daily_composite({'f1': s1, 'f2': s2})
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 3)  # 3只股票
+        self.assertIn('composite_score', result.columns)
+        self.assertIn('rank', result.columns)
+        self.assertIn('f1', result.columns)
+        self.assertIn('f2', result.columns)
+        self.assertNotIn('datetime', result.columns)
+        # rank 应为 1, 2, 3
+        self.assertEqual(set(result['rank'].tolist()), {1, 2, 3})
+
+    def test_empty_input(self):
+        """空输入返回空 DataFrame"""
+        result = synthesize_daily_composite({})
+        self.assertTrue(result.empty)
+
+    def test_single_factor(self):
+        """单因子合成"""
+        dates = pd.date_range('2024-01-01', periods=1, freq='B')
+        stocks = ['SH600000', 'SZ000001']
+        idx = pd.MultiIndex.from_product([dates, stocks], names=['datetime', 'instrument'])
+        s = pd.Series([1.0, 2.0], index=idx)
+
+        result = synthesize_daily_composite({'f1': s})
+
+        self.assertEqual(len(result), 2)
+        self.assertIn('composite_score', result.columns)
+
+    def test_ignores_older_dates(self):
+        """只使用最新日期数据"""
+        dates = pd.date_range('2024-01-01', periods=3, freq='B')
+        stocks = ['SH600000', 'SZ000001']
+        idx = pd.MultiIndex.from_product([dates, stocks], names=['datetime', 'instrument'])
+        s1 = pd.Series(list(range(6)), index=idx)
+        s2 = pd.Series(list(range(6, 12)), index=idx)
+
+        result = synthesize_daily_composite({'f1': s1, 'f2': s2})
+
+        # 应只有2行（最新日期2只股票）
+        self.assertEqual(len(result), 2)
+
+    def test_custom_weights(self):
+        """自定义权重"""
+        dates = pd.date_range('2024-01-01', periods=1, freq='B')
+        stocks = ['SH600000', 'SZ000001', 'SH600002']
+        idx = pd.MultiIndex.from_product([dates, stocks], names=['datetime', 'instrument'])
+        s1 = pd.Series([1.0, 2.0, 3.0], index=idx)
+        s2 = pd.Series([10.0, 20.0, 30.0], index=idx)
+
+        result = synthesize_daily_composite({'f1': s1, 'f2': s2}, weights={'f1': 0.8, 'f2': 0.2})
+
+        self.assertEqual(len(result), 3)
+        # f1 权重高，得分排序应与 f1 单因子排序一致
+        self.assertEqual(result.iloc[0]['instrument'], 'SH600002')
+        self.assertEqual(result.iloc[-1]['instrument'], 'SH600000')
 
 
 if __name__ == '__main__':

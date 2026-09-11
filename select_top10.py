@@ -7,15 +7,18 @@
 3. 选出TOP10股票
 4. 推送飞书
 """
+import logging
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 import config as cfg
+from engine.factor import synthesize_daily_composite
 from feishu_notify import send_feishu
+
+logger = logging.getLogger(__name__)
 
 
 def load_ic_results():
@@ -36,7 +39,7 @@ def load_ic_results():
             seen.add(key)
             unique_rows.append(row)
     ic_unique = pd.DataFrame(unique_rows)
-    print(f"  IC去重: {len(ic_df)} -> {len(ic_unique)} 个唯一因子")
+    logger.info("IC去重: %d -> %d 个唯一因子", len(ic_df), len(ic_unique))
     return ic_unique
 
 
@@ -47,7 +50,7 @@ def load_factors(factor_ids):
     for fid in factor_ids:
         h5 = WS / fid / "result.h5"
         if not h5.exists():
-            print(f"    ⚠️  跳过: {fid[:20]} (无h5)")
+            logger.warning("跳过: %s (无h5)", fid[:20])
             continue
         try:
             df = pd.read_hdf(h5, key="data")
@@ -58,113 +61,70 @@ def load_factors(factor_ids):
                 s.index = s.index.set_names(["datetime", "instrument"])
             factor_data[fid] = s
         except Exception as e:
-            print(f"    ❌ {fid[:20]} 加载失败: {e}")
+            logger.error("%s 加载失败: %s", fid[:20], e)
     return factor_data
 
 
 def screen_top10(ic_df, top_n=10):
     """基于Top N去重因子筛选TOP10股票"""
-    print("\n" + "=" * 60)
-    print("  🎯 因子选股 TOP10")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("  因子选股 TOP10")
+    logger.info("=" * 60)
 
     # 取Top N去重因子
     top_factors = ic_df.nlargest(top_n, "_abs_ic")["factor_id"].tolist()
-    print(f"\n  使用 Top {len(top_factors)} 个去重因子:")
+    logger.info("使用 Top %d 个去重因子", len(top_factors))
     for i, fid in enumerate(top_factors, 1):
         row = ic_df[ic_df["factor_id"] == fid].iloc[0]
-        icon = "🟢" if row["IC_5d"] > 0 else "🔴"
-        print(f"    {icon} #{i:2d}  {fid[:36]:<36s} IC={row['IC_5d']:+.4f}")
+        icon = "OK" if row["IC_5d"] > 0 else "WARN"
+        logger.info("  %s #%d  IC=%+.4f  %s", icon, i, row["IC_5d"], fid[:36])
 
     # 加载因子数据
-    print("\n  加载因子数据...")
+    logger.info("加载因子数据...")
     factor_data = load_factors(top_factors)
     if not factor_data:
         raise RuntimeError("没有可用的因子数据")
 
-    # 获取最新交易日
-    latest_dates = []
-    for s in factor_data.values():
-        d = s.index.get_level_values("datetime").max()
-        latest_dates.append(d)
-    latest_date = max(latest_dates)
-    print(f"  最新交易日: {latest_date.strftime('%Y-%m-%d')}")
+    # 使用 engine 统一合成逻辑
+    logger.info("合成综合得分...")
+    result_df = synthesize_daily_composite(factor_data)
+    if result_df.empty:
+        raise RuntimeError("综合得分为空")
 
-    # 提取最新日期的因子值
-    day_scores = {}
-    for fid, s in factor_data.items():
-        mask = s.index.get_level_values("datetime") == latest_date
-        day_vals = s[mask]
-        if len(day_vals) > 0:
-            day_scores[fid] = day_vals
-    print(f"  共 {len(day_scores)} 个因子有最新日期数据")
+    logger.info("股票数: %d", len(result_df))
 
-    # 构建 DataFrame
-    score_rows = []
-    instruments = set()
-    for fid, s in day_scores.items():
-        for idx, val in s.items():
-            inst = idx[1] if isinstance(idx, tuple) else idx
-            instruments.add(inst)
-            score_rows.append({"instrument": inst, "factor_id": fid, "score": val})
-
-    df_scores = pd.DataFrame(score_rows)
-    pivot = df_scores.pivot(index="instrument", columns="factor_id", values="score")
-    print(f"  股票数: {len(pivot):,}")
-
-    # Z-score 标准化
-    pivot_std = pivot.copy()
-    for col in pivot_std.columns:
-        mean = pivot_std[col].mean()
-        std = pivot_std[col].std()
-        if std > 0:
-            pivot_std[col] = (pivot_std[col] - mean) / std
-        else:
-            pivot_std[col] = 0.0
-
-    # 等权合成综合得分
-    n_factors = len(pivot_std.columns)
-    pivot_std["composite_score"] = pivot_std.mean(axis=1)
-
-    # 排序取Top K（保留所有列）
     top_k = 10
-    pivot_std["rank"] = pivot_std["composite_score"].rank(ascending=False, method="dense")
-    top_stocks = pivot_std.nlargest(top_k, "composite_score").reset_index()
-    top_stocks = top_stocks.rename(columns={"index": "instrument"})
-
-    # 拼接各因子Z-score列（保留factor columns顺序）
-    factor_cols = [c for c in pivot_std.columns if c not in ("composite_score", "rank")]
-    out_df = top_stocks[["rank", "instrument", "composite_score"] + factor_cols]
+    top_stocks = result_df.head(top_k)
 
     # 保存结果
     out_csv = cfg.PROJECT_ROOT / "top10_stocks_new.csv"
-    out_df.to_csv(out_csv, index=False)
-    print(f"\n  💾 已保存: {out_csv}")
+    top_stocks.to_csv(out_csv, index=False)
+    logger.info("已保存: %s", out_csv)
 
-    print(f"\n{'='*60}")
-    print(f"  🏆 Top {top_k} 股票 ({latest_date.strftime('%Y-%m-%d')})")
-    print(f"{'='*60}")
-    for _, row in out_df.iterrows():
-        print(f"  #{int(row['rank']):2d}  {row['instrument']:12s}  综合得分={row['composite_score']:.3f}")
+    logger.info("=" * 60)
+    logger.info("  TOP %d 股票 (%s)", top_k, latest_date.strftime("%Y-%m-%d"))
+    logger.info("=" * 60)
+    for _, row in top_stocks.iterrows():
+        logger.info("  #%d  %s  综合得分=%.3f", int(row["rank"]), row["instrument"], row["composite_score"])
 
     # 同时保存因子明细CSV
     detail_csv = cfg.PROJECT_ROOT / "top10_factor_detail.csv"
-    out_df.to_csv(detail_csv, index=False)
-    print(f"  💾 因子明细: {detail_csv}")
+    result_df.to_csv(detail_csv, index=False)
+    logger.info("因子明细: %s", detail_csv)
 
-    return out_df, latest_date
+    return top_stocks, latest_date
 
 
 def push_to_feishu(ic_df, stocks_df, latest_date):
     """推送结果到飞书"""
-    print("\n" + "=" * 60)
-    print("  📱 推送飞书通知")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("  推送飞书通知")
+    logger.info("=" * 60)
 
     top_factors = ic_df.nlargest(10, "_abs_ic")
     factor_lines = []
     for rank, (_, row) in enumerate(top_factors.head(5).iterrows(), 1):
-        icon = "🟢" if row["IC_5d"] > 0 else "🔴"
+        icon = "OK" if row["IC_5d"] > 0 else "WARN"
         factor_lines.append(
             f"  {icon} #{rank}  IC={row['IC_5d']:+.4f}  t={row['IC_t_5d']:.1f}  {row['factor_id'][:20]}"
         )
@@ -192,9 +152,9 @@ def main():
 
     try:
         # Step 1: 加载并去重IC结果
-        print("\n" + "=" * 60)
-        print("  📊 步骤 1/3: 加载IC结果")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("  步骤 1/3: 加载IC结果")
+        logger.info("=" * 60)
         ic_df = load_ic_results()
 
         # Step 2: 选股
@@ -204,13 +164,11 @@ def main():
         push_to_feishu(ic_df, stocks_df, latest_date)
 
         elapsed = time.time() - t_start
-        print(f"\n✅ 全部完成！耗时: {elapsed:.1f}s")
+        logger.info("全部完成！耗时: %.1fs", elapsed)
         return 0
 
     except Exception as e:
-        print(f"\n❌ 失败: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("失败: %s", e)
         return 1
 
 

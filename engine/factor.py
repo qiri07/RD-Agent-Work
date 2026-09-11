@@ -282,3 +282,84 @@ class FactorEngine:
 def create_factor_engine(workspace: Optional[Path] = None) -> FactorEngine:
     """工厂函数：创建因子引擎"""
     return FactorEngine(workspace)
+
+
+def synthesize_daily_composite(
+    factor_data: Dict[str, pd.Series],
+    weights: Optional[Dict[str, float]] = None,
+) -> pd.DataFrame:
+    """
+    统一的多因子合成入口：最新日横截面 Z-score + 等权合成。
+
+    供 select_top10.py / run_pipeline.py 等上层脚本复用，
+    避免各脚本重复实现相同的标准化与合成逻辑。
+
+    Args:
+        factor_data: {factor_id: Series}，Series 索引为 MultiIndex (datetime, instrument)
+        weights:     {factor_id: weight}；None 表示等权
+
+    Returns:
+        DataFrame，index 为 instrument，包含：
+            composite_score  — 综合得分
+            rank             — 降序排名（dense）
+            各因子 Z-score 列（列名为 factor_id）
+    """
+    if not factor_data:
+        return pd.DataFrame()
+
+    # 1. 取最新交易日
+    latest_date = max(
+        s.index.get_level_values("datetime").max()
+        for s in factor_data.values()
+    )
+    logger.info(f"合成综合得分，最新交易日: {latest_date.strftime('%Y-%m-%d')}")
+
+    # 2. 提取最新日期的因子截面
+    day_series = {}
+    for fid, s in factor_data.items():
+        mask = s.index.get_level_values("datetime") == latest_date
+        vals = s[mask].dropna()
+        if len(vals) > 0:
+            day_series[fid] = vals
+
+    if not day_series:
+        logger.warning("没有可用因子数据用于合成")
+        return pd.DataFrame()
+
+    logger.info(f"参与合成的因子数: {len(day_series)}，股票数: {len(day_series[next(iter(day_series))])}")
+
+    # 3. 横截面 Z-score 标准化（单日截面）
+    df = pd.DataFrame(day_series)  # index=MultiIndex(datetime, instrument), columns=factor_id
+    # 提取 instrument 作为显式列，datetime 不再需要
+    df = df.reset_index()
+    instrument_col = "instrument"
+    for col in df.columns:
+        if col not in (instrument_col, "datetime"):
+            mean = df[col].mean()
+            std = df[col].std()
+            df[col] = ((df[col] - mean) / std).fillna(0) if std > 0 else 0.0
+
+    # 4. 等权合成
+    factor_cols = [c for c in df.columns if c not in (instrument_col, "datetime")]
+    if weights is None:
+        weights = {fid: 1.0 / len(factor_cols) for fid in factor_cols}
+
+    score_cols = [f"score_{fid}" for fid in factor_cols]
+    for fid in factor_cols:
+        w = weights.get(fid, 0)
+        if w > 0:
+            df[f"score_{fid}"] = df[fid] * w
+
+    df["composite_score"] = df[score_cols].sum(axis=1)
+
+    # 5. 排名
+    df["rank"] = df["composite_score"].rank(ascending=False, method="dense").astype(int)
+
+    # 6. 按综合得分降序排列
+    df = df.sort_values("composite_score", ascending=False)
+
+    # 列顺序: rank, instrument, composite_score, 各因子Z-score
+    factor_cols = [c for c in df.columns if c not in ("rank", instrument_col, "composite_score", "datetime")]
+    df = df[["rank", instrument_col, "composite_score"] + factor_cols]
+
+    return df
