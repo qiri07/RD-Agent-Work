@@ -124,7 +124,7 @@ def run_phase2_ic_analysis() -> Optional[Tuple[pd.DataFrame, pd.DataFrame, pd.Da
     Returns:
         (ic_df, yearly_df, report) 或 None（分析失败）
     """
-    from run_factor_ic_scan import ic_analysis
+    from engine.ic_scan import ic_analysis
 
     logger.info("=" * 70)
     logger.info("  Phase 2: IC分析")

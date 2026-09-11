@@ -14,12 +14,12 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def cache_with_ttl(maxsize: int = 2):
+def cache_with_ttl(maxsize: int = 64):
     """
     带TTL的LRU缓存装饰器
-    
+
     Args:
-        maxsize: 最大缓存条目数
+        maxsize: 最大缓存条目数（66个因子session × 每日IC + returns 字典，64足够）
     """
     def decorator(func: Callable) -> Callable:
         cached_func = lru_cache(maxsize=maxsize)(func)
@@ -33,47 +33,49 @@ def cache_with_ttl(maxsize: int = 2):
     return decorator
 
 
-def load_cached_parquet(path: Path, **kwargs) -> pd.DataFrame:
+def load_cached_parquet(path: Path, maxsize: int = 64, **kwargs) -> pd.DataFrame:
     """
     缓存Parquet文件加载
-    
+
     Args:
         path: 文件路径
+        maxsize: LRU缓存最大条目数
         **kwargs: 传递给pd.read_parquet的参数
-        
+
     Returns:
         DataFrame
     """
     # 使用文件路径和内容哈希作为缓存键
     file_hash = hashlib.md5(str(path).encode()).hexdigest()[:8]
-    
-    @lru_cache(maxsize=2)
+
+    @lru_cache(maxsize=maxsize)
     def _load(p: str) -> pd.DataFrame:
         logger.debug(f"加载Parquet: {p}")
         return pd.read_parquet(Path(p), **kwargs)
-    
+
     return _load(str(path))
 
 
-def load_cached_hdf(path: Path, key: str = "data", **kwargs) -> pd.DataFrame:
+def load_cached_hdf(path: Path, key: str = "data", maxsize: int = 64, **kwargs) -> pd.DataFrame:
     """
     缓存HDF5文件加载
-    
+
     Args:
         path: 文件路径
         key: HDF5中的key
+        maxsize: LRU缓存最大条目数
         **kwargs: 传递给pd.read_hdf的参数
-        
+
     Returns:
         DataFrame
     """
     file_hash = hashlib.md5(str(path).encode()).hexdigest()[:8]
-    
-    @lru_cache(maxsize=2)
+
+    @lru_cache(maxsize=maxsize)
     def _load(p: str, k: str) -> pd.DataFrame:
         logger.debug(f"加载HDF5: {p}[{k}]")
         return pd.read_hdf(Path(p), key=k, **kwargs)
-    
+
     return _load(str(path), key)
 
 

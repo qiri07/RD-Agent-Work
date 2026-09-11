@@ -147,6 +147,9 @@ class BacktestEngine:
             })
             if hold_days > 0 and date_idx + hold_days < len(dates):
                 pending_sell[stock] = date_idx + hold_days
+            elif hold_days == 0 and date_idx + 1 < len(dates):
+                # T+1: hold_days=0 时，次日才可卖出（不能当天卖）
+                pending_sell[stock] = date_idx + 1
 
         # 边界检查
         if (hasattr(dates, 'empty') and dates.empty) or not price_map:
@@ -255,6 +258,9 @@ class BacktestEngine:
             })
             if hold_days > 0:
                 pending_sell[stock] = hold_days
+            else:
+                # T+1: hold_days=0 时，次日才可卖出
+                pending_sell[stock] = 1
 
         # 每日净值
         for i, date in enumerate(dates):

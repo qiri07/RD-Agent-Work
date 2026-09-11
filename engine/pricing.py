@@ -62,10 +62,10 @@ class PriceEngine:
 
         return adj, list(all_split_stocks)
 
-    def _detect_split_events(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, pd.Timestamp, float]]:
+    def _detect_split_events(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, float]]:
         """
-        自动检测拆分日期对
-        返回: [(curr_date, ratio), ...]  curr_date是拆分发生日，ratio是复权因子
+        自动检测拆分日期（批量事件：同一天 ≥5 只股票出现价格突变）
+        返回: [(split_date, avg_ratio), ...] split_date 是拆分发生日，ratio 是平均复权因子
         """
         close = df['$close']
         prev_close = close.groupby(level='instrument').shift(1)

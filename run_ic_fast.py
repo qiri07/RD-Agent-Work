@@ -42,16 +42,29 @@ def main():
     print("=" * 70, flush=True)
     t_main = time.time()
 
-    # Step 1: 加载价格数据，计算 forward returns → 字典
+    # Step 1: 加载价格数据，计算 forward returns → 字典（分年加载避免 OOM）
     print("加载价格数据...", flush=True)
     t0 = time.time()
-    df = pd.read_parquet(SRC_PQ)
-    df_reset = df.reset_index()
-    df_reset["ret_5d"] = df_reset.groupby("instrument")["$close"].pct_change(5).shift(-5)
-    ret_df = df_reset[["date", "instrument", "ret_5d"]].dropna()
-    ret_lookup = dict(zip(zip(ret_df["date"], ret_df["instrument"]), ret_df["ret_5d"]))
-    n_dates = ret_df["date"].nunique()
-    print(f"  {len(ret_lookup):,} 条, {n_dates} 个交易日 ({time.time()-t0:.1f}s)", flush=True)
+    from ic_compute import load_returns_chunked
+    returns_by_year = load_returns_chunked(SRC_PQ, year_start=2023, year_end=2026)
+    if returns_by_year is None:
+        print("❌ 返回数据文件不存在，终止", flush=True)
+        return 1
+
+    # 合并为统一字典 { (date, instrument): ret_5d }
+    ret_lookup = {}
+    total_rows = 0
+    for year, s in returns_by_year.items():
+        # s is a Series with MultiIndex (datetime, instrument)
+        idx_tuples = list(zip(s.index.get_level_values(0), s.index.get_level_values(1)))
+        for t, val in zip(idx_tuples, s.values):
+            ret_lookup[t] = float(val)
+        total_rows += len(s)
+        del s
+    n_dates = sum(s.index.get_level_values(0).nunique() for s in returns_by_year.values())
+    print(f"  {total_rows:,} 条, {n_dates} 个交易日 ({time.time()-t0:.1f}s)", flush=True)
+    del returns_by_year
+    gc.collect()
 
     # Step 2: 逐 session 计算 IC
     print("\n加载因子并计算 IC...", flush=True)

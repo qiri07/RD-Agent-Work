@@ -89,6 +89,9 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
         row = {"factor_id": factor_id, "valid_rows": len(factor_valid)}
 
         for fd in IC_FORWARD_DAYS:
+            # 每次迭代重置，避免跨轮累积旧值
+            daily_ic_tmp = None
+
             fwd_return = returns_df.groupby("instrument")["$close"].pct_change(fd).shift(-fd)
             common_idx = factor_valid.index.intersection(fwd_return.dropna().index)
             if len(common_idx) < 1000:
@@ -106,7 +109,7 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
             ic_val = compute_ic(f, r, fd)
             row[f"IC_{fd}d"] = ic_val
 
-            # t-stat
+            # t-stat: t = mean / (std / sqrt(n-1))，与 engine/factor.py 保持一致
             if not np.isnan(ic_val) and len(f) > 20:
                 f_dates_tmp = f.index.get_level_values(0)
                 r_dates_tmp = r.index.get_level_values(0)
@@ -120,10 +123,10 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
                         if not pd.isna(ic_v):
                             daily_ic_vals.append(ic_v)
                 daily_ic_tmp = pd.Series(daily_ic_vals)
-                if len(daily_ic_tmp) > 1:
-                    t_stat = (ic_val * np.sqrt(len(daily_ic_tmp) - 2)
-                              / np.sqrt(1 - ic_val**2 + 1e-10)
-                              if abs(ic_val) < 1 else np.inf)
+                n_days = len(daily_ic_tmp)
+                if n_days > 1:
+                    ic_std = daily_ic_tmp.std()
+                    t_stat = ic_val / (ic_std / np.sqrt(max(n_days - 1, 1)) + 1e-10) if ic_std > 0 else np.nan
                 else:
                     t_stat = np.nan
                 row[f"IC_t_{fd}d"] = t_stat
@@ -131,14 +134,17 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
                 row[f"IC_t_{fd}d"] = np.nan
 
             # IC 为正的比例
-            pos_ratio = (daily_ic_tmp > 0).mean() if 'daily_ic_tmp' in dir() else np.nan
+            pos_ratio = (daily_ic_tmp > 0).mean() if daily_ic_tmp is not None else np.nan
             row[f"IC_pos_ratio_{fd}d"] = pos_ratio
-            row[f"IC_abs_mean_{fd}d"] = daily_ic_tmp.abs().mean() if 'daily_ic_tmp' in dir() else np.nan
+            row[f"IC_abs_mean_{fd}d"] = daily_ic_tmp.abs().mean() if daily_ic_tmp is not None else np.nan
 
         all_results.append(row)
         print(f"  [{i}/{total}] {factor_id}: done")
 
     result_df = pd.DataFrame(all_results)
+
+    if result_df.empty:
+        return result_df
 
     # 汇总 IC（取各 forward days 的均值）
     ic_cols = [c for c in result_df.columns
@@ -214,8 +220,12 @@ def run_ic_scan(sessions=None, phase1_only: bool = False,
 
         print(f"加载了 {len(factor_results)} 个因子结果", flush=True)
 
+        if not factor_results:
+            print("  无可用因子结果，跳过 IC 分析", flush=True)
+            return pd.DataFrame()
+
         # 加载 forward returns
-        src_pq = __import__('config', fromlist=['FACTOR_SOURCE']).cfg.FACTOR_SOURCE / "daily_pv_full.parquet"
+        src_pq = __import__('config', fromlist=['FACTOR_SOURCE']).FACTOR_SOURCE / "daily_pv_full.parquet"
         t0 = time.time()
         fpq = pd.read_parquet(src_pq)
         fpq_reset = fpq.reset_index()
@@ -236,8 +246,11 @@ def run_ic_scan(sessions=None, phase1_only: bool = False,
         print(f"\n{'='*70}", flush=True)
         print(f"  IC 分析结果 (按 IC_avg 排序)", flush=True)
         print(f"{'='*70}", flush=True)
-        ic_cols_show = [c for c in ic_df.columns if "IC_" in c]
-        print(ic_df[["factor_id"] + ic_cols_show].to_string(index=False), flush=True)
+        if ic_df.empty:
+            print("  (无有效因子)", flush=True)
+        else:
+            ic_cols_show = [c for c in ic_df.columns if "IC_" in c]
+            print(ic_df[["factor_id"] + ic_cols_show].to_string(index=False), flush=True)
 
         # 保存
         out_pq = src_pq.parent / "ic_scan_results.parquet"

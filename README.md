@@ -167,7 +167,7 @@ python -m pytest tests/ -q            # Quiet mode
 python -m pytest tests/ --cov=.       # With coverage report
 ```
 
-**Current test coverage: 459 tests, 100% pass rate**
+**Current test coverage: 487 tests, 100% pass rate**
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -193,14 +193,8 @@ python -m pytest tests/ --cov=.       # With coverage report
 | `test_backtest_detail.py` | 17 | 100% |
 | `test_data_validator_detail.py` | 13 | 100% |
 | `test_ic_compute_detail.py` | 14 | 100% |
-| `test_engine_modules.py` | 19 | 100% |
-| `test_cache.py` | 37 | 100% |
-| `test_metrics.py` | 17 | 100% |
-| `test_pricing.py` | 16 | 100% |
-| `test_factor_engine.py` | 18 | 100% |
-| `test_backtest_detail.py` | 17 | 100% |
-| `test_data_validator_detail.py` | 13 | 100% |
-| `test_ic_compute_detail.py` | 14 | 100% |
+| `test_ic_scan_engine.py` | 13 | 100% |
+| `test_recompute_engine.py` | 13 | 100% |
 
 ## Data
 
@@ -234,9 +228,20 @@ python -m pytest tests/ --cov=.       # With coverage report
 - **Fixed**: Volume anomaly detection tests now use 20+ day windows (single-day spike absorbed by σ)
 - **Fixed**: `compute_ic_session()` returns `factor_id` even when no daily IC (consistent API)
 
+### Bug Fixes (2026-09-12)
+- **Fixed**: T+1 trading rule violation in `engine/backtest.py` — `hold_days=0` now correctly enforces next-day sell
+- **Fixed**: `daily_ic_tmp` stale value scope bug in `engine/ic_scan.py` — variable now properly reset per iteration
+- **Fixed**: IC t-statistic formula inconsistency — unified to `t = ic_mean / (ic_std / sqrt(n-1))` across all modules
+- **Fixed**: `engine/ic_scan.py` empty DataFrame crash when no valid factors — graceful handling added
+- **Fixed**: `engine/recompute.py` wrong import path for `ic_analysis` — now correctly imports from `engine.ic_scan`
+- **Fixed**: `engine/cache.py` `NameError` in `load_cached_parquet/hdf` — added `maxsize` parameter
+- **Improved**: `run_ic_fast.py` now uses chunked loading via `ic_compute.load_returns_chunked()` instead of loading 1GB parquet fully
+- **Improved**: Cache `maxsize` increased from 2 to 64 for effective multi-session caching
+
 ### Testing
-- **Added**: 7 new test files (+130 tests) covering cache, metrics, pricing, factor engine, backtest detail, data validator detail, IC compute detail
-- **Total**: 459 tests, 100% pass rate (17s)
+- **Added**: 28 new tests covering `engine/ic_scan.py` (compute_ic, ic_analysis, run_ic_scan) and `engine/recompute.py` (phase1/phase2, yearly IC, report generation)
+- **Added**: T+1 violation prevention tests in `test_backtest_detail.py`
+- **Total**: 487 tests, 100% pass rate (~35s)
 
 ### Documentation
 - `AUDIT_REPORT_20260911.md`: Full audit report

@@ -110,7 +110,7 @@ class TestBacktestEngineHoldDays(unittest.TestCase):
         self.engine = create_backtest_engine(initial_capital=1_000_000)
 
     def test_hold_days_zero(self):
-        """hold_days=0 时立即卖出"""
+        """hold_days=0 时遵守T+1规则：次日才可卖出"""
         dates = pd.date_range('2024-01-01', periods=5, freq='B')
         price_map = {
             (dates[i], 'SH600000'): {'open': 100, 'close': 100 + i}
@@ -119,11 +119,15 @@ class TestBacktestEngineHoldDays(unittest.TestCase):
         signals = {0: ['SH600000']}
 
         result = self.engine.run(dates, price_map, signals, hold_days=0, top_k=1)
-        # 应有一次买入和一次卖出
         buys = [t for t in result.trades if t['action'] == 'BUY']
         sells = [t for t in result.trades if t['action'] == 'SELL']
         self.assertEqual(len(buys), 1)
         self.assertGreater(len(sells), 0)
+        # T+1: 卖出日期必须 >= 买入日期+1
+        buy_date = buys[0]['date']
+        sell_dates = [t['date'] for t in sells]
+        for sd in sell_dates:
+            self.assertGreaterEqual(sd, buy_date + pd.Timedelta(days=1))
 
     def test_hold_days_small(self):
         """短持有期"""
@@ -232,6 +236,31 @@ class TestBacktestEngineFixedHold(unittest.TestCase):
         result = self.engine.run_fixed_hold(dates, price_map, ['SH600000'], hold_days=0)
         self.assertIsInstance(result, BacktestResult)
         self.assertGreater(len(result.daily_value), 0)
+        # T+1: 首日买入的股票不能在首日卖出
+        buys = [t for t in result.trades if t['action'] == 'BUY']
+        sells = [t for t in result.trades if t['action'] == 'SELL']
+        if buys and sells:
+            buy_date = buys[0]['date']
+            for s in sells:
+                self.assertGreater(s['date'], buy_date)
+
+    def test_t1_violation_prevented(self):
+        """T+1 规则：当天买入不能当天卖出"""
+        dates = pd.date_range('2024-01-01', periods=3, freq='B')
+        price_map = {
+            (dates[i], 'SH600000'): {'open': 100, 'close': 100 + i}
+            for i in range(len(dates))
+        }
+        signals = {0: ['SH600000']}
+
+        result = self.engine.run(dates, price_map, signals, hold_days=0, top_k=1)
+        buys = [t for t in result.trades if t['action'] == 'BUY']
+        sells = [t for t in result.trades if t['action'] == 'SELL']
+        if buys and sells:
+            # 买和卖不能在同一天
+            buy_dates = {t['date'] for t in buys}
+            sell_dates = {t['date'] for t in sells}
+            self.assertEqual(buy_dates & sell_dates, set())
 
     def test_fixed_hold_multiple_stocks(self):
         """多股票固定持仓"""
