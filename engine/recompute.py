@@ -11,8 +11,11 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import logging
 
 import config as cfg
+
+logger = logging.getLogger(__name__)
 from logging_config import setup_logging
 
 logger = __import__('logging').getLogger(__name__)
@@ -64,7 +67,7 @@ def run_phase1_recompute() -> Tuple[List, List]:
             logger.info(f"  进度: {i}/{len(sessions)}, 已用: {elapsed:.0f}s, 预计剩余: {eta:.0f}s")
 
     elapsed = time.time() - t_start
-    logger.info(f"\nPhase 1 完成:")
+    logger.info("\nPhase 1 完成:")
     logger.info(f"  成功: {len(success)} 个因子")
     logger.info(f"  失败: {len(fail)} 个因子")
     logger.info(f"  总耗时: {elapsed:.1f}s")

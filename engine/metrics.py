@@ -76,7 +76,10 @@ class PerformanceAnalyzer:
         total_return = (nav.iloc[-1] - 1) * 100
         days = (nav.index[-1] - nav.index[0]).days
         years = days / 365.25
-        annual_return = ((nav.iloc[-1] / nav.iloc[0]) ** (1 / max(years, 0.01)) - 1) * 100 if years > 0 else total_return
+        if years > 0:
+            annual_return = ((nav.iloc[-1] / nav.iloc[0]) ** (1 / years) - 1) * 100
+        else:
+            annual_return = total_return
 
         # 夏普比率
         daily_ret = nav.pct_change().dropna()

@@ -21,7 +21,10 @@ class PriceEngine:
         self.source_pq = source_pq or cfg.DAILY_PV_PQ
         self.split_prev = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_PREV or "2026-09-01")
         self.split_curr = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_CURR or "2026-09-02")
-        self.split_ratio_threshold = split_ratio_threshold if split_ratio_threshold is not None else cfg.BACKTEST_SPLIT_RATIO_THRESHOLD
+        if split_ratio_threshold is not None:
+            self.split_ratio_threshold = split_ratio_threshold
+        else:
+            self.split_ratio_threshold = cfg.BACKTEST_SPLIT_RATIO_THRESHOLD
 
     def load_prices(self) -> pd.DataFrame:
         """加载价格数据"""
