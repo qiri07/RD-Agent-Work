@@ -26,7 +26,7 @@ warnings.filterwarnings('ignore')
 import config as cfg
 from engine.pricing import PriceEngine
 from engine.backtest import BacktestEngine, create_backtest_engine
-from engine.factor import FactorEngine, create_factor_engine
+from engine.factor import FactorEngine, create_factor_engine, synthesize_daily_composite
 from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
 from logging_config import setup_logging
 
@@ -89,10 +89,10 @@ def main():
     )
 
     # 步骤4: 计算指标
-    print("\n📊 回测结果")
-    print("-" * 70)
+    logger.info("\n回测结果")
+    logger.info("-" * 70)
     metrics = perf_analyzer.analyze(daily_value, trade_log)
-    print(perf_analyzer.generate_report(metrics))
+    logger.info(perf_analyzer.generate_report(metrics))
 
     # 保存结果
     df = pd.DataFrame(daily_value).dropna(subset=['value']).set_index('date').sort_index()
@@ -100,21 +100,21 @@ def main():
     metrics.nav_curve = df[['value']].copy()
     metrics.nav_curve.to_csv("backtest_nav.csv")
     pd.DataFrame(trade_log).to_csv("backtest_trades.csv", index=False, encoding='utf-8-sig')
-    print(f"\n💾 已保存: backtest_nav.csv, backtest_trades.csv")
+    logger.info("\n已保存: backtest_nav.csv, backtest_trades.csv")
 
     # 月度统计
-    print("\n📅 月度收益统计:")
-    print("-" * 70)
+    logger.info("\n月度收益统计:")
+    logger.info("-" * 70)
     monthly = perf_analyzer.monthly_stats(daily_value)
-    print(f"  {'月份':>10s}  {'起始净值':>12s}  {'期末净值':>12s}  {'月收益':>8s}")
-    print(f"  {'─'*10}  {'─'*12}  {'─'*12}  {'─'*8}")
+    logger.info("  %10s  %12s  %12s  %8s", "月份", "起始净值", "期末净值", "月收益")
+    logger.info("  %10s  %12s  %12s  %8s", "-"*10, "-"*12, "-"*12, "-"*8)
     for idx, row in monthly.iterrows():
         sign = "+" if row['ret'] >= 0 else ""
-        print(f"  {str(idx):>10s}  {row['start_val']:>12,.0f}  {row['end_val']:>12,.0f}  {sign}{row['ret']:>6.2f}%")
+        logger.info("  %10s  %12,.0f  %12,.0f  %s%6.2f%%", str(idx), row['start_val'], row['end_val'], sign, row['ret'])
 
     # ASCII 净值曲线
-    print("\n📈 净值曲线（ASCII）")
-    print("-" * 70)
+    logger.info("\n净值曲线（ASCII）")
+    logger.info("-" * 70)
     nav = df['value'] / INITIAL_CAPITAL
     sample_idx = np.linspace(0, len(nav) - 1, 100, dtype=int)
     sample_nav = nav.iloc[sample_idx]
@@ -127,20 +127,20 @@ def main():
         line = ""
         for val in sample_nav:
             line += "█" if val >= threshold - (nav_max - nav_min) / (2 * height) else " "
-        print(f"  {threshold:5.2f} │{line}│")
-    print(f"        └{'─' * width}┘")
-    print(f"         {nav.index[sample_idx[0]].date()}        {nav.index[sample_idx[-1]].date()}")
+        logger.info("  %5.2f │%s│", threshold, line)
+    logger.info("        └%s┘", "─" * width)
+    logger.info("         %s        %s", nav.index[sample_idx[0]].date(), nav.index[sample_idx[-1]].date())
 
     # 分阶段统计
-    print("\n📊 分阶段统计:")
-    print("-" * 70)
+    logger.info("\n分阶段统计:")
+    logger.info("-" * 70)
     periods = cfg.BACKTEST_PERIODS
     for name, start, end in periods:
         sub = nav.loc[start:end]
         if len(sub) < 2:
             continue
         ret = (sub.iloc[-1] / sub.iloc[0] - 1) * 100
-        print(f"  {name:15s}: {ret:+.2f}%")
+        logger.info("  %15s: %+.2f%%", name, ret)
 
 
 def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
@@ -165,10 +165,10 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
         cutoff_idx = all_dates.index(SPLIT_DATE_CURR)
         truncated = all_dates[:cutoff_idx]
         if len(truncated) < 2:
-            print("  警告: 截断后无足够交易日")
+            logger.warning("截断后无足够交易日")
             return [], []
         all_dates = truncated
-        print(f"  ⚠️  避开拆分日 {SPLIT_DATE_CURR.date()}，回测截止至 {all_dates[-1].date()}")
+        logger.warning("避开拆分日 %s，回测截止至 %s", SPLIT_DATE_CURR.date(), all_dates[-1].date())
 
     # 构建价格查找
     price_map = {}
@@ -182,10 +182,17 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
             day_scores = scores.xs(date, level="datetime")
             day_scores = day_scores.dropna()
             if len(day_scores) >= top_k:
-                # 对多因子等权合成综合得分
-                day_scores_mean = day_scores.mean(axis=1)
-                top_stocks = day_scores_mean.nlargest(top_k).index.tolist()
-                signals[i] = top_stocks
+                # 使用 engine 统一合成：横截面 Z-score + 等权
+                # day_scores 已是单日截面（index=instrument），构造 MultiIndex 传给 synthesize_daily_composite
+                day_scores_dict = {col: pd.Series(day_scores[col].values,
+                                                  index=pd.MultiIndex.from_tuples(
+                                                      [(all_dates[i], inst) for inst in day_scores.index],
+                                                      names=['datetime', 'instrument']))
+                                   for col in day_scores.columns}
+                synth_result = synthesize_daily_composite(day_scores_dict)
+                if not synth_result.empty:
+                    top_stocks = synth_result.head(top_k)['instrument'].tolist()
+                    signals[i] = top_stocks
         except KeyError:
             continue
 

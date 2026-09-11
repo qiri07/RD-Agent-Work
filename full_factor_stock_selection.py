@@ -8,6 +8,7 @@
 - 输出 Top-K 股票的因子贡献分解
 """
 
+import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -19,6 +20,9 @@ sys.path.insert(0, str(Path(".").resolve()))
 from feishu_notify import send_top_stocks
 
 import config as cfg
+from engine.factor import synthesize_daily_composite
+
+logger = logging.getLogger(__name__)
 
 WORKSPACE = cfg.RDAGENT_WORKSPACE
 SOURCE_DATA = cfg.DAILY_PV_PQ
@@ -67,23 +71,16 @@ def load_all_factors():
             # 去重：同一 (datetime, instrument) 只保留第一条
             df = df[~df.index.duplicated(keep='first')]
             factor_data[fid] = df[fid]
-            print(f"  ✅ {fid[:12]}  {fname:25s}  {len(df):,} rows")
+            logger.info("  %s  %s  %d rows", fid[:12], fname[:25], len(df))
         except Exception as e:
             errors.append((fid, str(e)))
-            print(f"  ❌ {fid[:12]}  {str(e)[:60]}")
+            logger.warning("  %s  %s", fid[:12], str(e)[:60])
 
     combined = pd.concat(factor_data, axis=1)
     # 再次确保去重
     combined = combined[~combined.index.duplicated(keep='first')]
-    print(f"\n共加载 {len(factor_data)} 个因子，{len(errors)} 个失败")
+    logger.info("共加载 %d 个因子，%d 个失败", len(factor_data), len(errors))
     return combined, errors
-
-
-def standardize_cross_section(df):
-    """横截面 Z-score 标准化（按日期）"""
-    return df.groupby(level="datetime", sort=False).transform(
-        lambda x: (x - x.mean()) / x.std(ddof=0) if x.std(ddof=0) > 0 else 0
-    )
 
 
 def get_latest_date(df):
@@ -95,110 +92,84 @@ def get_latest_date(df):
 # ─── 主逻辑 ─────────────────────────────────────────────────
 
 def main():
-    print("=" * 70)
-    print("  全量因子选股 — 66 因子 × 5,553 股票")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("  全量因子选股 — 66 因子 × 5,553 股票")
+    logger.info("=" * 70)
 
     # 1. 加载全量数据
-    print("\n📂 加载所有因子数据...")
+    logger.info("加载所有因子数据...")
     combined, errors = load_all_factors()
     if combined.empty:
-        print("没有可用因子数据！")
+        logger.error("没有可用因子数据！")
         return
 
-    print(f"\n合并结果: {combined.shape[0]:,} 行 × {combined.shape[1]} 因子")
+    logger.info("合并结果: %d 行 × %d 因子", combined.shape[0], combined.shape[1])
     latest = get_latest_date(combined)
-    print(f"时间范围: {combined.index.get_level_values('datetime').min().date()} "
-          f"~ {latest.date()}")
-    print(f"股票数量: {combined.index.get_level_values('instrument').nunique():,}")
+    date_min = combined.index.get_level_values('datetime').min().date()
+    logger.info("时间范围: %s ~ %s", date_min, latest.date())
+    logger.info("股票数量: %d", combined.index.get_level_values('instrument').nunique())
 
-    # 2. 横截面标准化
-    print("\n📐 横截面 Z-score 标准化...")
-    standardized = standardize_cross_section(combined)
-    nan_pct = standardized.isna().mean() * 100
-    print(f"  各因子 NaN 比例: min={nan_pct.min():.1f}%  "
-          f"max={nan_pct.max():.1f}%  mean={nan_pct.mean():.1f}%")
+    # 2. 构建因子数据 dict，使用 engine 统一合成接口
+    factor_data = {col: combined[col] for col in combined.columns}
+    logger.info("参与合成的因子数: %d", len(factor_data))
 
-    # 3. 等权合成
-    print("\n🎯 等权合成综合得分...")
-    standardized = standardized.fillna(0)
-    n_factors = standardized.shape[1]
-    w = 1.0 / n_factors
-    standardized["score"] = (standardized * w).sum(axis=1)
-
-    # 4. 全历史选股 — 保存完整结果
-    print("\n📋 全历史选股结果...")
-    all_dates = standardized.index.get_level_values("datetime").drop_duplicates().sort_values()
+    # 3. 全历史选股 — 逐日调用 synthesize_daily_composite
+    all_dates = combined.index.get_level_values("datetime").drop_duplicates().sort_values()
     all_dates = all_dates[~pd.isna(all_dates)]
+    logger.info("全历史选股，共 %d 个交易日...", len(all_dates))
 
     rows_out = []
     for dt in all_dates:
-        day = standardized.xs(dt, level="datetime")
-        day_ranked = day.copy()
-        day_ranked["rank"] = day_ranked["score"].rank(ascending=False, method="dense")
-        top = day_ranked.nlargest(TOP_K, "score")
-        for stock, row in top.iterrows():
+        result = synthesize_daily_composite(factor_data, date=dt)
+        if result.empty:
+            continue
+        for _, row in result.head(TOP_K).iterrows():
             rows_out.append({
                 "date": dt.date(),
                 "rank": int(row["rank"]),
-                "stock": stock,
-                "score": row["score"],
+                "stock": row["instrument"],
+                "score": float(row["composite_score"]),
             })
 
     out_df = pd.DataFrame(rows_out)
     out_df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-    print(f"  已保存 {len(out_df)} 条记录 → {OUTPUT_FILE}")
+    logger.info("已保存 %d 条记录 → %s", len(out_df), OUTPUT_FILE)
 
-    # 5. 最新日 Top-K 展示
-    print(f"\n{'='*70}")
-    print(f"  最新交易日 {latest.date()}  — Top {TOP_K} 股票")
-    print(f"{'='*70}")
+    # 4. 最新日 Top-K 展示
+    latest = get_latest_date(combined)
+    logger.info("=" * 70)
+    logger.info("  最新交易日 %s  — Top %d 股票", latest.date(), TOP_K)
+    logger.info("=" * 70)
     top_latest = out_df[out_df["date"] == latest.date()].head(TOP_K)
-    print(f"  {'排名':>5s}  {'股票代码':>12s}  {'综合得分':>12s}")
-    print(f"  {'─'*5}  {'─'*12}  {'─'*12}")
+    logger.info("  %5s  %12s  %12s", "排名", "股票代码", "综合得分")
+    logger.info("  %5s  %12s  %12s", "-----", "------------", "------------")
     for _, row in top_latest.iterrows():
-        print(f"  {row['rank']:>5d}  {row['stock']:>12s}  {row['score']:>12.4f}")
+        logger.info("  %5d  %12s  %12.4f", row['rank'], row['stock'], row['score'])
 
-    # 6. Top 30 股票的因子贡献（各因子对该股票得分的贡献）
-    print(f"\n{'='*70}")
-    print(f"  Top {TOP_K} 股票 — 各因子贡献明细（最新日）")
-    print(f"{'='*70}")
+    # 5. Top K 股票的因子贡献（各因子对该股票得分的贡献）
+    logger.info("\nTop %d 股票 — 各因子贡献明细（最新日）", TOP_K)
     top_stocks = top_latest["stock"].tolist()
-    day_raw = combined.xs(latest, level="datetime")
-    day_std = standardized.xs(latest, level="datetime")
+    result_latest = synthesize_daily_composite(factor_data, date=latest)
+    day_std = result_latest.set_index("instrument")
 
     for stock in top_stocks:
         if stock not in day_std.index:
             continue
-        contributions = {}
+        contribs = []
         for col in day_std.columns:
-            if col == "score":
+            if col in ("composite_score", "rank"):
                 continue
-            val = day_std.loc[stock, col]
-            contributions[col] = val * w
-        sorted_contrib = sorted(contributions.items(), key=lambda x: x[1], reverse=True)
-        top3 = sorted_contrib[:3]
-        bot3 = sorted_contrib[-3:]
-        print(f"\n  【{stock}】  score={day_std.loc[stock, 'score']:.4f}")
-        print(f"    正向贡献最大:  " + ", ".join(f"{c}={v:.4f}" for c, v in top3))
-        print(f"    负向贡献最大:  " + ", ".join(f"{c}={v:.4f}" for c, v in bot3))
+            val = float(day_std.loc[stock, col])
+            contribs.append((col, val))
+        contribs.sort(key=lambda x: x[1], reverse=True)
+        top3 = contribs[:3]
+        bot3 = contribs[-3:]
+        score = float(day_std.loc[stock, "composite_score"])
+        logger.info("\n  [%s]  score=%.4f", stock, score)
+        logger.info("    正向贡献最大:  %s", ", ".join(f"{c}={v:.4f}" for c, v in top3))
+        logger.info("    负向贡献最大:  %s", ", ".join(f"{c}={v:.4f}" for c, v in bot3))
 
-    # 7. 各因子有效性统计（IC）
-    print(f"\n{'='*70}")
-    print("  各因子有效性统计（最新日截面）")
-    print(f"{'='*70}")
-    print(f"  {'因子ID(前12位)':>16s}  {'均值':>8s}  {'标准差':>8s}  {'NaN%':>6s}")
-    print(f"  {'─'*16}  {'─'*8}  {'─'*8}  {'─'*6}")
-    for col in standardized.columns:
-        if col == "score":
-            continue
-        s = standardized[col]
-        print(f"  {col:>16s}  {s.mean():>8.4f}  {s.std():>8.4f}  {s.isna().mean()*100:>5.1f}%")
-
-    print(f"\n✅ 选股完成！结果已保存至 {OUTPUT_FILE}")
-    print(f"   共筛选 {len(all_dates)} 个交易日，每日 Top {TOP_K} 只")
-
-    # 飞书推送最新日 Top K
+    # 6. 飞书推送最新日 Top K
     try:
         today_stocks = out_df[out_df["date"] == latest.date()].head(TOP_K).copy()
         today_stocks["rank"] = range(1, len(today_stocks) + 1)
@@ -207,8 +178,7 @@ def main():
         today_stocks.columns = ["rank", "instrument", "composite_score"]
         send_top_stocks(today_stocks, top_n=TOP_K)
     except Exception as e:
-        print(f"⚠️ 飞书推送失败: {e}", flush=True)
+        logger.warning("飞书推送失败: %s", e)
 
-
-if __name__ == "__main__":
-    main()
+    logger.info("\n选股完成！结果已保存至 %s", OUTPUT_FILE)
+    logger.info("  共筛选 %d 个交易日，每日 Top %d 只", len(all_dates), TOP_K)

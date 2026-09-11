@@ -4,6 +4,7 @@
 =====================================
 架构：使用 engine/ 模块
 """
+import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -15,6 +16,8 @@ from engine.pricing import PriceEngine
 from engine.backtest import BacktestEngine, create_backtest_engine
 from engine.factor import FactorEngine, create_factor_engine
 from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
+
+logger = logging.getLogger(__name__)
 
 # 目标股票
 TARGET = {
@@ -40,7 +43,7 @@ SLIP = cfg.BACKTEST_SLIPPAGE_RATE
 MIN_TR = cfg.BACKTEST_MIN_TRADE_VALUE
 HOLD = cfg.BACKTEST_HOLD_DAYS
 
-# 拆分日期
+# 拆分日期（自动检测）
 _split_prev, _split_curr = cfg.get_split_dates()
 SPLIT_PREV = pd.Timestamp(_split_prev) if _split_prev else pd.Timestamp("2026-09-01")
 SPLIT_CURR = pd.Timestamp(_split_curr) if _split_curr else pd.Timestamp("2026-09-02")
@@ -60,9 +63,9 @@ TOP_FIDS = [
 
 def main():
     t0 = time.time()
-    print("=" * 70)
-    print("  31只标的因子分析与回测")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("  31只标的因子分析与回测")
+    logger.info("=" * 70)
 
     # 初始化引擎
     price_engine = PriceEngine()
@@ -76,7 +79,7 @@ def main():
     perf_analyzer = create_performance_analyzer(ICAP)
 
     # ===== 1. 加载价格 =====
-    print("\n📂 加载价格数据...")
+    logger.info("\n加载价格数据...")
     t1 = time.time()
     pv = pd.read_hdf(SRC, key='data')
     if pv.index.names == ['date', 'instrument']:
@@ -84,14 +87,15 @@ def main():
     pv = pv.sort_index()[~pv.index.duplicated(keep='first')]
 
     # 复权
-    pv, _ = price_engine.compute_adjusted_prices(pv)
+    pv, split_stocks = price_engine.compute_adjusted_prices(pv)
+    logger.info("  复权调整: %d 只股票发生拆分", len(split_stocks))
 
     prices = pv[['$open', '$close']].to_numpy()
     date_idx = pv.index.get_level_values('datetime').unique()
     date_map = {d: i for i, d in enumerate(sorted(date_idx))}
     valid_dates = [d for d in date_map if d < SPLIT_CURR]
     VDATES = [date_map[d] for d in valid_dates]
-    print(f"  {len(pv):,}行 loaded in {time.time()-t1:.1f}s, {len(valid_dates)} trading days")
+    logger.info("  %d行 loaded in %.1fs, %d trading days", len(pv), time.time()-t1, len(valid_dates))
 
     # 构建快速查找
     inst_to_idx = {code: i for i, code in enumerate(CODES)}
@@ -104,55 +108,55 @@ def main():
         stock_date_idx[si] = [(date_map.get(d, -1), rows.loc[d, '$close']) for d in rows.index if d in date_map]
 
     # ===== 2. 加载因子 =====
-    print("\n📂 加载因子得分...")
+    logger.info("\n加载因子得分...")
     t1 = time.time()
     factor_data = factor_engine.load_factors(TOP_FIDS)
-    print(f"  因子加载完成 in {time.time()-t1:.1f}s, {len(factor_data)} factors")
+    logger.info("  因子加载完成 in %.1fs, %d factors", time.time()-t1, len(factor_data))
 
     # ===== 3. 单只股票表现 =====
     print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CODES)
 
     # ===== 4. 等权买入持有31只 =====
-    print("\n" + "=" * 70)
-    print("  二、策略1: 等权买入持有31只股票")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info("  策略1: 等权买入持有31只股票")
+    logger.info("=" * 70)
     hold_result = run_equal_weight_hold(
         valid_dates, stock_date_idx, CODES, backtest_engine
     )
     hold_metrics = perf_analyzer.analyze(hold_result['daily_value'], hold_result['trades'])
-    print(perf_analyzer.generate_report(hold_metrics, "策略1: 等权买入持有"))
+    logger.info("\n%s", perf_analyzer.generate_report(hold_metrics, "策略1: 等权买入持有").strip())
     save_results('backtest_31_hold', hold_result)
 
     # ===== 5. 因子轮动回测 =====
-    print("\n" + "=" * 70)
-    print("  三、策略2: 多因子轮动(Top10, 5日持仓)")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info("  策略2: 多因子轮动(Top10, 5日持仓)")
+    logger.info("=" * 70)
     rotation_result = run_factor_rotation(
         valid_dates, stock_date_idx, CODES, factor_data, backtest_engine
     )
     rotation_metrics = perf_analyzer.analyze(rotation_result['daily_value'], rotation_result['trades'])
-    print(perf_analyzer.generate_report(rotation_metrics, "策略2: 因子轮动"))
+    logger.info("\n%s", perf_analyzer.generate_report(rotation_metrics, "策略2: 因子轮动").strip())
     save_results('backtest_31_rotation', rotation_result)
 
     # ===== 6. 因子IC分析 =====
-    print("\n" + "=" * 70)
-    print("  四、因子IC分析（目标股票池）")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info("  因子IC分析（目标股票池）")
+    logger.info("=" * 70)
     analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, HOLD)
 
     # ===== 7. 汇总 =====
     print_summary(hold_metrics, rotation_metrics)
 
     elapsed = time.time() - t0
-    print(f"\n  ⏱️  总耗时: {elapsed:.1f}s")
-    print("=" * 70)
+    logger.info("\n总耗时: %.1fs", elapsed)
+    logger.info("=" * 70)
 
 
 def print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CODES):
     """打印单只股票表现"""
-    print("\n" + "=" * 70)
-    print("  一、单只股票买入持有表现")
-    print("=" * 70)
+    logger.info("\n" + "=" * 70)
+    logger.info("  单只股票买入持有表现")
+    logger.info("=" * 70)
     perf = []
     for si, code in enumerate(CODES):
         if si not in stock_date_idx:
@@ -179,28 +183,26 @@ def print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CO
         })
 
     perf_df = pd.DataFrame(perf).sort_values('return', ascending=False)
-    print(f"\n  {'代码':>10}  {'名称':>8}  {'总收益%':>8}  {'年化%':>8}  {'回撤%':>8}  {'区间'}")
-    print(f"  {'─'*10}  {'─'*8}  {'─'*8}  {'─'*8}  {'─'*8}  {'─'*20}")
+    logger.info("\n  %10s  %8s  %8s  %8s  %8s  %s", "代码", "名称", "总收益%", "年化%", "回撤%", "区间")
+    logger.info("  %10s  %8s  %8s  %8s  %8s  %s", "-"*10, "-"*8, "-"*8, "-"*8, "-"*8, "-"*20)
     for _, r in perf_df.iterrows():
         s = "+" if r['return'] >= 0 else ""
-        print(f"  {r['code']:>10}  {r['name']:>8}  {s}{r['return']:>6.2f}%  {s}{r['ann_return']:>6.2f}%  "
-              f"{r['max_dd']:>+7.2f}%  {r['start']}~{r['end']}")
+        logger.info("  %10s  %8s  %s%6.2f%%  %s%6.2f%%  %s%6.2f%%  %s~%s",
+                    r['code'], r['name'], s, r['return'], s, r['ann_return'], s, r['max_dd'], r['start'], r['end'])
 
 
 def run_equal_weight_hold(valid_dates, stock_date_idx, CODES, engine):
     """运行等权买入持有策略"""
-    # 找每只股票的起始日期索引
     stock_first = {}
     for si, code in enumerate(CODES):
         if si in stock_date_idx and stock_date_idx[si]:
             stock_first[si] = stock_date_idx[si][0][0]
     if not stock_first:
-        print("  无有效数据")
+        logger.warning("无有效数据")
         return {'daily_value': [], 'trades': []}
-    
+
     start_idx = max(stock_first.values())
-    
-    # 使用回测引擎
+
     price_map = {}
     for si, code in enumerate(CODES):
         if si not in stock_date_idx:
@@ -208,7 +210,7 @@ def run_equal_weight_hold(valid_dates, stock_date_idx, CODES, engine):
         for di, close in stock_date_idx[si]:
             if di < len(valid_dates):
                 price_map[(valid_dates[di], code)] = {'open': close, 'close': close}
-    
+
     target_stocks = list(stock_first.keys())
     result = engine.run_fixed_hold(valid_dates, price_map, target_stocks, hold_days=0)
     return {'daily_value': result.daily_value, 'trades': result.trades}
@@ -216,7 +218,6 @@ def run_equal_weight_hold(valid_dates, stock_date_idx, CODES, engine):
 
 def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine):
     """运行因子轮动策略"""
-    # 预计算每日因子得分
     stock_factor_matrix = {}
     for fid, fdf in factor_data.items():
         stock_factor_matrix[fid] = {}
@@ -228,7 +229,6 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
             except Exception:
                 stock_factor_matrix[fid][si] = None
 
-    # 计算综合得分
     composite_scores = {}
     for di in range(len(valid_dates)):
         d = valid_dates[di]
@@ -251,7 +251,6 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
             std_v = arr.std() if arr.std() > 0 else 1
             composite_scores[di] = {si: (v - mean_v) / std_v for si, v in scores.items()}
 
-    # 构建信号
     signals = {}
     for di, scores in composite_scores.items():
         target_scores = {si: v for si, v in scores.items() if si < len(CODES)}
@@ -259,7 +258,6 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
             selected = sorted(target_scores, key=target_scores.get, reverse=True)[:10]
             signals[di] = [CODES[si] for si in selected]
 
-    # 构建价格映射
     price_map = {}
     for si, code in enumerate(CODES):
         if si in stock_date_idx:
@@ -267,7 +265,6 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
                 if di < len(valid_dates):
                     price_map[(valid_dates[di], code)] = {'open': close, 'close': close}
 
-    # 运行回测
     result = engine.run(valid_dates, price_map, signals, hold_days=5, top_k=10)
     return {'daily_value': result.daily_value, 'trades': result.trades}
 
@@ -321,26 +318,28 @@ def analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, hold_days
             })
 
     ic_results.sort(key=lambda x: abs(x['mean_ic']), reverse=True)
-    print(f"  {'排名':>3}  {'因子ID':>20}  {'IC均值':>8}  {'|IC|均值':>8}  {'IR':>6}  {'正向%':>7}  {'天数':>5}")
-    print(f"  {'─'*3}  {'─'*20}  {'─'*8}  {'─'*8}  {'─'*6}  {'─'*7}  {'─'*5}")
+    logger.info("\n  %3s  %20s  %8s  %8s  %6s  %7s  %5s", "排名", "因子ID", "IC均值", "|IC|均值", "IR", "正向%", "天数")
+    logger.info("  %3s  %20s  %8s  %8s  %6s  %7s  %5s", "---", "--------------------", "--------", "--------", "------", "-------", "-----")
     for rank, r in enumerate(ic_results[:10], 1):
-        print(f"  {rank:>3}  {r['fid']:>20}  {r['mean_ic']:>+7.4f}  {r['abs_mean']:>7.4f}  "
-              f"{r['ir']:>6.3f}  {r['pos_ratio']:>6.0%}  {r['n_days']:>5}")
+        logger.info("  %3d  %20s  %+7.4f  %7.4f  %6.3f  %6.0f%%  %5d",
+                    rank, r['fid'], r['mean_ic'], r['abs_mean'], r['ir'], r['pos_ratio']*100, r['n_days'])
 
 
 def print_summary(hold_metrics, rotation_metrics):
     """打印汇总"""
-    print(f"\n{'='*70}")
-    print("  五、策略对比汇总")
-    print(f"{'='*70}")
-    print(f"  {'策略':<30}  {'总收益%':>10}  {'年化%':>10}  {'夏普':>8}  {'回撤%':>10}")
-    print(f"  {'─'*30}  {'─'*10}  {'─'*10}  {'─'*8}  {'─'*10}")
-    print(f"  {'等权买入持有(31只)':<30}  {hold_metrics.total_return_pct:+>9.2f}%  "
-          f"{hold_metrics.annual_return_pct:+>9.2f}%  {hold_metrics.sharpe_ratio:>8.3f}  "
-          f"{hold_metrics.max_drawdown_pct:>+9.2f}%")
-    print(f"  {'因子轮动(Top10,5日)':<30}  {rotation_metrics.total_return_pct:+>9.2f}%  "
-          f"{rotation_metrics.annual_return_pct:+>9.2f}%  {rotation_metrics.sharpe_ratio:>8.3f}  "
-          f"{rotation_metrics.max_drawdown_pct:>+9.2f}%")
+    logger.info("\n" + "=" * 70)
+    logger.info("  策略对比汇总")
+    logger.info("=" * 70)
+    logger.info("  %-30s  %10s  %10s  %8s  %10s", "策略", "总收益%", "年化%", "夏普", "回撤%")
+    logger.info("  %30s  %10s  %10s  %8s  %10s", "-"*30, "-"*10, "-"*10, "-"*8, "-"*10)
+    logger.info("  %-30s  %+.9f%%  %+.9f%%  %8.3f  %+.9f%%",
+                "等权买入持有(31只)",
+                hold_metrics.total_return_pct, hold_metrics.annual_return_pct,
+                hold_metrics.sharpe_ratio, hold_metrics.max_drawdown_pct)
+    logger.info("  %-30s  %+.9f%%  %+.9f%%  %8.3f  %+.9f%%",
+                "因子轮动(Top10,5日)",
+                rotation_metrics.total_return_pct, rotation_metrics.annual_return_pct,
+                rotation_metrics.sharpe_ratio, rotation_metrics.max_drawdown_pct)
 
 
 def save_results(prefix, result):

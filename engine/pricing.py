@@ -38,37 +38,36 @@ class PriceEngine:
         """
         计算复权价格：
         - 自动检测所有拆分事件（前后收盘价比值 > 阈值）
-        - 对拆分股票的拆分前价格乘以复权因子
+        - 仅对发生拆分的股票应用复权调整
         - 支持多次拆分事件
         """
         if df is None:
             df = self.load_prices()
 
-        # 自动检测所有拆分日期
-        split_dates = self._detect_split_events(df)
+        # 自动检测所有拆分日期及对应股票
+        split_info = self._detect_split_events(df)
 
-        if not split_dates:
+        if not split_info:
             return df, []
 
         adj = df.copy()
         all_split_stocks = set()
 
-        for split_date, ratio in split_dates:
+        for split_date, ratio, split_stocks in split_info:
+            # 仅对拆分股票 + 拆分前日期 应用复权
             mask_pre = df.index.get_level_values('datetime') < split_date
-            # 向量化操作：一次性处理所有股票
+            mask_stock = df.index.get_level_values('instrument').isin(split_stocks)
+            mask = mask_pre & mask_stock
             for col in ['$open', '$close', '$high', '$low']:
-                adj.loc[mask_pre, col] = df.loc[mask_pre, col] * ratio
-            # 记录发生变化的股票
-            changed_mask = adj['$close'] != df['$close']
-            stocks_changed = adj.loc[changed_mask].index.get_level_values('instrument').unique()
-            all_split_stocks.update(stocks_changed.tolist())
+                adj.loc[mask, col] = df.loc[mask, col] * ratio
+            all_split_stocks.update(split_stocks)
 
         return adj, list(all_split_stocks)
 
-    def _detect_split_events(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, float]]:
+    def _detect_split_events(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, float, List[str]]]:
         """
         自动检测拆分日期（批量事件：同一天 ≥5 只股票出现价格突变）
-        返回: [(split_date, avg_ratio), ...] split_date 是拆分发生日，ratio 是平均复权因子
+        返回: [(split_date, avg_ratio, [stock_list]), ...]
         """
         close = df['$close']
         prev_close = close.groupby(level='instrument').shift(1)
@@ -89,7 +88,8 @@ class PriceEngine:
         for split_date in sorted(batch_split_dates):
             day_extreme = extreme.xs(split_date, level='datetime')
             avg_ratio = day_extreme.mean()
-            events.append((split_date, avg_ratio))
+            split_stocks = day_extreme.index.get_level_values('instrument').unique().tolist()
+            events.append((split_date, avg_ratio, split_stocks))
 
         return events
 

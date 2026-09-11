@@ -4,6 +4,7 @@
 ============================================================
 架构：使用 engine/ 模块
 """
+import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -15,6 +16,8 @@ from engine.pricing import PriceEngine
 from engine.backtest import BacktestEngine, create_backtest_engine
 from engine.factor import FactorEngine, create_factor_engine
 from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
+
+logger = logging.getLogger(__name__)
 
 WORKSPACE = cfg.RDAGENT_WORKSPACE
 SOURCE_PQ = cfg.DAILY_PV_FULL_PQ
@@ -30,9 +33,9 @@ HOLD = cfg.BACKTEST_HOLD_DAYS
 
 
 def main():
-    print("=" * 70)
-    print("  单因子回测扫描 v4 — 胜率 Top 3")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("  单因子回测扫描 v4 — 胜率 Top 3")
+    logger.info("=" * 70)
 
     # 初始化引擎
     price_engine = PriceEngine()
@@ -46,44 +49,43 @@ def main():
     factor_engine = create_factor_engine(WORKSPACE)
     perf_analyzer = create_performance_analyzer(INITIAL_CAPITAL)
 
-    print("\n📂 加载因子得分...")
+    logger.info("\n加载因子得分...")
     t0 = time.time()
     factor_ids = sorted([d.name for d in WORKSPACE.iterdir()
                          if d.is_dir() and (d / "result.h5").exists()])
     scores_dict = factor_engine.load_factors(factor_ids)
     scores = pd.concat(scores_dict, axis=1) if scores_dict else pd.DataFrame()
-    print(f"  {scores.shape[0]:,} 行 × {scores.shape[1]} 因子  ({time.time()-t0:.1f}s)")
+    logger.info("  %d 行 × %d 因子  (%.1fs)", scores.shape[0], scores.shape[1], time.time()-t0)
 
-    print("\n📂 加载价格数据...")
+    logger.info("\n加载价格数据...")
     prices = price_engine.load_prices()
     prices = prices[~prices.index.duplicated(keep='first')]
-    # 复权处理
-    prices, _ = price_engine.compute_adjusted_prices(prices)
-    print(f"  {len(prices):,} 行, {prices.index.get_level_values('instrument').nunique():,} 只")
+    prices, split_stocks = price_engine.compute_adjusted_prices(prices)
+    logger.info("  %d 行, %d 只 (拆分: %d 只)", len(prices), prices.index.get_level_values('instrument').nunique(), len(split_stocks))
 
-    print(f"\n🚀 开始回测 ({scores.shape[1]} 个因子)...")
+    logger.info("\n开始回测 (%d 个因子)...", scores.shape[1])
     results = backtest_all_factors(scores, prices, backtest_engine)
 
     if not results:
-        print("无有效结果！")
+        logger.warning("无有效结果！")
         return
 
     # 按胜率排序
     results.sort(key=lambda x: x['win_rate'], reverse=True)
 
-    print(f"\n{'='*70}")
-    print(f"  全因子排名 (Top 15)")
-    print(f"{'='*70}")
-    print(f"  {'#':>3s}  {'因子ID':>16s}  {'胜率':>6s}  {'总收益':>8s}  {'交易数':>6s}  {'盈亏比':>6s}")
-    print(f"  {'─'*3}  {'─'*16}  {'─'*6}  {'─'*8}  {'─'*6}  {'─'*6}")
+    logger.info("\n" + "=" * 70)
+    logger.info("  全因子排名 (Top 15)")
+    logger.info("=" * 70)
+    logger.info("  %3s  %16s  %6s  %8s  %6s  %6s", "#", "因子ID", "胜率", "总收益", "交易数", "盈亏比")
+    logger.info("  %3s  %16s  %6s  %8s  %6s  %6s", "---", "----------------", "------", "--------", "------", "------")
     for rank, r in enumerate(results[:15], 1):
-        print(f"  {rank:>3d}  {r['factor_id']:>16s}  {r['win_rate']:>5.1f}%  "
-              f"{r['total_return']:>+7.2f}%  {r['total_trades']:>6d}  {r['profit_factor']:>6.2f}")
+        logger.info("  %3d  %16s  %5.1f%%  %+7.2f%%  %6d  %6.2f",
+                    rank, r['factor_id'], r['win_rate'], r['total_return'], r['total_trades'], r['profit_factor'])
 
     # Top 3 详细
-    print(f"\n{'='*70}")
-    print(f"  🏆 Top 3 高胜率因子")
-    print(f"{'='*70}")
+    logger.info("\n" + "=" * 70)
+    logger.info("  Top 3 高胜率因子")
+    logger.info("=" * 70)
 
     top3 = results[:3]
     for rank, r in enumerate(top3, 1):
@@ -96,29 +98,29 @@ def main():
         rets = pd.Series(trades)
         sharpe = rets.mean() / rets.std() * np.sqrt(252) if rets.std() > 0 else 0
 
-        print(f"\n  #{rank}  因子ID: {r['factor_id']}")
-        print(f"  {'─'*50}")
-        print(f"  胜率:           {r['win_rate']:.1f}%  ({r['win_trades']}/{r['total_trades']}笔)")
-        print(f"  总收益率:       {r['total_return']:+.2f}%")
-        print(f"  最终净值:       {r['final_value']:,.0f} 元")
-        print(f"  夏普比率:       {sharpe:.3f}")
-        print(f"  平均盈利:       {avg_win:+.2f}%")
-        print(f"  平均亏损:       {avg_loss:+.2f}%")
-        print(f"  盈亏比:         {r['profit_factor']:.2f}")
+        logger.info("\n  #%d  因子ID: %s", rank, r['factor_id'])
+        logger.info("  %50s", "─" * 50)
+        logger.info("  胜率:           %.1f%%  (%d/%d笔)", r['win_rate'], r['win_trades'], r['total_trades'])
+        logger.info("  总收益率:       %+.2f%%", r['total_return'])
+        logger.info("  最终净值:       %,.0f 元", r['final_value'])
+        logger.info("  夏普比率:       %.3f", sharpe)
+        logger.info("  平均盈利:       %+.2f%%", avg_win)
+        logger.info("  平均亏损:       %+.2f%%", avg_loss)
+        logger.info("  盈亏比:         %.2f", r['profit_factor'])
 
         tdf = pd.DataFrame({'pnl_pct': trades})
         tdf.to_csv(f"top3_factor_{rank}_{r['factor_id']}.csv", index=False)
-        print(f"  💾 已保存: top3_factor_{rank}_{r['factor_id']}.csv")
+        logger.info("  已保存: top3_factor_%d_%s.csv", rank, r['factor_id'])
 
-    print(f"\n{'='*70}")
-    print(f"  Top 3 因子 — 交易统计")
-    print(f"{'='*70}")
+    logger.info("\n" + "=" * 70)
+    logger.info("  Top 3 因子 — 交易统计")
+    logger.info("=" * 70)
     for rank, r in enumerate(top3, 1):
         trades = r['trades']
-        print(f"\n  #{rank} {r['factor_id'][:24]}")
-        print(f"    交易分布: 盈利{sum(1 for t in trades if t>0)}笔  亏损{sum(1 for t in trades if t<=0)}笔")
-        print(f"    最大单笔盈利: {max(trades):+.2f}%")
-        print(f"    最大单笔亏损: {min(trades):+.2f}%")
+        logger.info("\n  #%d %s", rank, r['factor_id'][:24])
+        logger.info("    交易分布: 盈利%d笔  亏损%d笔", sum(1 for t in trades if t>0), sum(1 for t in trades if t<=0))
+        logger.info("    最大单笔盈利: %+.2f%%", max(trades))
+        logger.info("    最大单笔亏损: %+.2f%%", min(trades))
 
 
 def backtest_all_factors(scores_df, prices_df, engine: BacktestEngine):
@@ -150,10 +152,10 @@ def backtest_all_factors(scores_df, prices_df, engine: BacktestEngine):
 
         result = engine.run(dates, price_map, signals, hold_days=HOLD, top_k=TOP_K)
         trades = result.trades
-        
+
         # 提取盈亏百分比
         pnl_list = [t.get('pnl_pct', 0) for t in trades if t.get('action') == 'SELL']
-        
+
         if not pnl_list:
             continue
 
@@ -167,8 +169,8 @@ def backtest_all_factors(scores_df, prices_df, engine: BacktestEngine):
         pf = avg_win / avg_loss if avg_loss > 0 else float('inf')
 
         elapsed = time.time() - t0
-        print(f"  [{fid[:12]}] 胜率={win_rate:.1f}% 收益={total_ret:+.1f}%  "
-              f"交易={len(pnl_list)} 选股日={n_valid}  ({elapsed:.0f}s)", flush=True)
+        logger.info("  [%s] 胜率=%.1f%% 收益=%+.1f%%  交易=%d 选股日=%d  (%.0fs)",
+                    fid[:12], win_rate, total_ret, len(pnl_list), n_valid, elapsed)
 
         results.append({
             'factor_id': fid,
@@ -193,7 +195,6 @@ def compute_day_topk(scores_series):
         if len(group) < TOP_K:
             continue
         top = group.nlargest(TOP_K)
-        # 从 MultiIndex 中提取 instrument 代码（第二级）
         day_topk[dt] = [idx[1] if isinstance(idx, tuple) else idx for idx in top.index.tolist()]
     return day_topk
 

@@ -287,16 +287,18 @@ def create_factor_engine(workspace: Optional[Path] = None) -> FactorEngine:
 def synthesize_daily_composite(
     factor_data: Dict[str, pd.Series],
     weights: Optional[Dict[str, float]] = None,
+    date: Optional[pd.Timestamp] = None,
 ) -> pd.DataFrame:
     """
-    统一的多因子合成入口：最新日横截面 Z-score + 等权合成。
+    统一的多因子合成入口：横截面 Z-score + 等权合成。
 
-    供 select_top10.py / run_pipeline.py 等上层脚本复用，
+    供 select_top10.py / run_pipeline.py / backtest_top10.py 等上层脚本复用，
     避免各脚本重复实现相同的标准化与合成逻辑。
 
     Args:
         factor_data: {factor_id: Series}，Series 索引为 MultiIndex (datetime, instrument)
         weights:     {factor_id: weight}；None 表示等权
+        date:        指定日期（None=最新日期）
 
     Returns:
         DataFrame，index 为 instrument，包含：
@@ -307,17 +309,18 @@ def synthesize_daily_composite(
     if not factor_data:
         return pd.DataFrame()
 
-    # 1. 取最新交易日
-    latest_date = max(
-        s.index.get_level_values("datetime").max()
-        for s in factor_data.values()
-    )
-    logger.info(f"合成综合得分，最新交易日: {latest_date.strftime('%Y-%m-%d')}")
+    # 1. 确定目标日期
+    if date is None:
+        date = max(
+            s.index.get_level_values("datetime").max()
+            for s in factor_data.values()
+        )
+    logger.info("合成综合得分，交易日: %s", date.strftime('%Y-%m-%d'))
 
-    # 2. 提取最新日期的因子截面
+    # 2. 提取目标日期的因子截面
     day_series = {}
     for fid, s in factor_data.items():
-        mask = s.index.get_level_values("datetime") == latest_date
+        mask = s.index.get_level_values("datetime") == date
         vals = s[mask].dropna()
         if len(vals) > 0:
             day_series[fid] = vals
@@ -326,7 +329,7 @@ def synthesize_daily_composite(
         logger.warning("没有可用因子数据用于合成")
         return pd.DataFrame()
 
-    logger.info(f"参与合成的因子数: {len(day_series)}，股票数: {len(day_series[next(iter(day_series))])}")
+    logger.info("参与合成的因子数: %d，股票数: %d", len(day_series), len(next(iter(day_series.values()))))
 
     # 3. 横截面 Z-score 标准化（单日截面）
     df = pd.DataFrame(day_series)  # index=MultiIndex(datetime, instrument), columns=factor_id
