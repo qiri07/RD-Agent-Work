@@ -136,7 +136,8 @@ def main():
     print(f"\n  {'排名':>4s}  {'股票代码':>12s}  {'综合得分':>10s}")
     print(f"  {'─'*4}  {'─'*12}  {'─'*10}")
     for i, (stock, row) in enumerate(top_stocks.iterrows(), 1):
-        print(f"  {i:4d}  {stock:>12s}  {row['score']:>10.4f}")
+        stock_str = str(stock)
+        print(f"  {i:4d}  {stock_str:>12}  {row['score']:>10.4f}")
 
     # 各因子贡献
     day_std = standardized.xs(latest_date, level="datetime")

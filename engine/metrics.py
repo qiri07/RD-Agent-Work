@@ -93,9 +93,16 @@ class PerformanceAnalyzer:
         win_rate = len(wins) / len(sells) * 100 if sells else 0
 
         avg_win = np.mean([t['pnl_pct'] for t in wins]) if wins else 0
-        avg_loss = abs(np.mean([t['pnl_pct'] for t in sells if t.get('pnl_pct', 0) <= 0])) \
-            if sells and len([t for t in sells if t.get('pnl_pct', 0) <= 0]) > 0 else 1
-        profit_factor = avg_win / avg_loss if avg_loss > 0 else float('inf')
+        losses = [t for t in sells if t.get('pnl_pct', 0) <= 0]
+        avg_loss = abs(np.mean([t['pnl_pct'] for t in losses])) \
+            if losses else 0
+        # 无卖出交易时盈亏比为0；全盈利时（avg_loss==0）返回inf
+        if not sells:
+            profit_factor = 0.0
+        elif avg_loss == 0:
+            profit_factor = float('inf')
+        else:
+            profit_factor = avg_win / avg_loss
 
         return PerformanceMetrics(
             total_days=len(df),

@@ -72,7 +72,15 @@ def main():
 
     # 步骤2: 加载因子得分
     logger.info("\n📂 步骤2: 加载因子得分...")
-    scores = factor_engine.load_all_factors()
+    factor_ids = sorted([d.name for d in cfg.RDAGENT_WORKSPACE.iterdir()
+                         if d.is_dir() and (d / "result.h5").exists()])
+    logger.info(f"  加载 {len(factor_ids)} 个因子...")
+    scores_dict = factor_engine.load_factors(factor_ids)
+    # 合并为 DataFrame
+    if scores_dict:
+        scores = pd.concat(scores_dict, axis=1)
+    else:
+        scores = pd.DataFrame()
 
     # 步骤3: 运行回测
     logger.info(f"\n🚀 步骤3: 回测 (Top {TOP_K}, 持仓 {HOLD_DAYS} 天)...")
@@ -174,8 +182,10 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
             day_scores = scores.xs(date, level="datetime")
             day_scores = day_scores.dropna()
             if len(day_scores) >= top_k:
-                selected = day_scores.nlargest(top_k, 'score').index.tolist()
-                signals[i] = selected
+                # 对多因子等权合成综合得分
+                day_scores_mean = day_scores.mean(axis=1)
+                top_stocks = day_scores_mean.nlargest(top_k).index.tolist()
+                signals[i] = top_stocks
         except KeyError:
             continue
 

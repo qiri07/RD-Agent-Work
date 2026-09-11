@@ -219,13 +219,21 @@ class FactorEngine:
         
         day_scores = scores.xs(date, level='datetime')
         day_scores = day_scores.dropna()
-        day_scores = day_scores.sort_values(ascending=False)
-        top_stocks = day_scores.head(top_k)
-        
-        result = pd.DataFrame({
-            'score': top_stocks,
-            'rank': range(1, len(top_stocks) + 1)
-        })
+        if isinstance(day_scores, pd.DataFrame):
+            score_col = 'composite_score' if 'composite_score' in day_scores.columns else day_scores.columns[0]
+            day_scores = day_scores.sort_values(score_col, ascending=False)
+            top_stocks = day_scores.head(top_k)
+            result = pd.DataFrame({
+                'score': top_stocks[score_col].values,
+                'rank': range(1, len(top_stocks) + 1)
+            })
+        else:
+            day_scores = day_scores.sort_values(ascending=False)
+            top_stocks = day_scores.head(top_k)
+            result = pd.DataFrame({
+                'score': top_stocks.values,
+                'rank': range(1, len(top_stocks) + 1)
+            })
         return result
 
     def compute_factor_ic_summary(self, 

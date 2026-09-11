@@ -9,11 +9,16 @@ from engine.backtest import BacktestEngine, BacktestResult, create_backtest_engi
 from engine.factor import FactorEngine, create_factor_engine
 from engine.metrics import PerformanceAnalyzer, PerformanceMetrics, create_performance_analyzer
 from engine.cache import get_cache, clear_global_cache, load_cached_parquet, load_cached_hdf
+from engine.recompute import (
+    run_phase1_recompute, run_phase2_ic_analysis,
+    ic_analysis_yearly, generate_ic_report, print_summary, run_full_recompute,
+)
+from engine.ic_scan import compute_ic, ic_analysis, run_ic_scan, IC_FORWARD_DAYS, IC_MIN_STocks_PER_DAY
 
 __all__ = [
     'PriceEngine',
     'load_and_adjust_prices',
-    'BacktestEngine', 
+    'BacktestEngine',
     'BacktestResult',
     'create_backtest_engine',
     'FactorEngine',
@@ -25,4 +30,15 @@ __all__ = [
     'clear_global_cache',
     'load_cached_parquet',
     'load_cached_hdf',
+    'run_phase1_recompute',
+    'run_phase2_ic_analysis',
+    'ic_analysis_yearly',
+    'generate_ic_report',
+    'print_summary',
+    'run_full_recompute',
+    'compute_ic',
+    'ic_analysis',
+    'run_ic_scan',
+    'IC_FORWARD_DAYS',
+    'IC_MIN_STocks_PER_DAY',
 ]

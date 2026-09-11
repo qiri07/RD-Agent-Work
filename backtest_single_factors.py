@@ -48,7 +48,10 @@ def main():
 
     print("\n📂 加载因子得分...")
     t0 = time.time()
-    scores = factor_engine.load_all_factors()
+    factor_ids = sorted([d.name for d in WORKSPACE.iterdir()
+                         if d.is_dir() and (d / "result.h5").exists()])
+    scores_dict = factor_engine.load_factors(factor_ids)
+    scores = pd.concat(scores_dict, axis=1) if scores_dict else pd.DataFrame()
     print(f"  {scores.shape[0]:,} 行 × {scores.shape[1]} 因子  ({time.time()-t0:.1f}s)")
 
     print("\n📂 加载价格数据...")
@@ -190,7 +193,8 @@ def compute_day_topk(scores_series):
         if len(group) < TOP_K:
             continue
         top = group.nlargest(TOP_K)
-        day_topk[dt] = top.index.tolist()
+        # 从 MultiIndex 中提取 instrument 代码（第二级）
+        day_topk[dt] = [idx[1] if isinstance(idx, tuple) else idx for idx in top.index.tolist()]
     return day_topk
 
 

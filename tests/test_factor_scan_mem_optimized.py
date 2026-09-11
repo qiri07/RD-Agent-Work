@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-factor_scan_mem_optimized.py 单元测试
+ic_scan_utils.py 单元测试
 ======================================
 测试内存优化版因子扫描逻辑：IC扫描、磁盘清理、trace归档。
 """
@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 import pandas as pd
+from ic_scan_utils import recompute_factor, cleanup_disk_space, WORKSPACE
 
 
 class TestScanAllFactors(unittest.TestCase):
@@ -108,7 +109,6 @@ class TestRecomputeFactor(unittest.TestCase):
     def test_recompute_returns_valid_result(self):
         """重算应返回有效的IC和top10指标"""
         import tempfile
-        from factor_scan_mem_optimized import recompute_factor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_dir, h5_path = self._make_test_factor_file(tmpdir)
@@ -124,7 +124,7 @@ class TestRecomputeFactor(unittest.TestCase):
             rets.to_frame("return").to_parquet(src_pq)
 
             # 设置配置
-            with mock.patch('factor_scan_mem_optimized.RETURNS_PQ', src_pq):
+            with mock.patch('ic_scan_utils.RETURNS_PQ', src_pq):
                 result = recompute_factor(session_dir)
 
             self.assertIsNotNone(result)
@@ -137,7 +137,6 @@ class TestRecomputeFactor(unittest.TestCase):
     def test_recompute_skips_insufficient_data(self):
         """数据不足时应跳过"""
         import tempfile
-        from factor_scan_mem_optimized import recompute_factor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_dir, h5_path = self._make_test_factor_file(tmpdir, n_days=10, n_stocks=5)
@@ -152,7 +151,7 @@ class TestRecomputeFactor(unittest.TestCase):
             src_pq = Path(tmpdir) / "returns.parquet"
             rets.to_frame("return").to_parquet(src_pq)
 
-            with mock.patch('factor_scan_mem_optimized.RETURNS_PQ', src_pq):
+            with mock.patch('ic_scan_utils.RETURNS_PQ', src_pq):
                 result = recompute_factor(session_dir)
 
             # 数据不足应返回None
@@ -161,7 +160,6 @@ class TestRecomputeFactor(unittest.TestCase):
     def test_recompute_missing_h5(self):
         """缺少H5文件应返回None"""
         import tempfile
-        from factor_scan_mem_optimized import recompute_factor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             session_dir = Path(tmpdir) / "no_h5"
@@ -177,7 +175,7 @@ class TestCleanupDiskSpace(unittest.TestCase):
     def test_cleanup_removes_debug_files(self):
         """应删除daily_pv_debug副本"""
         import tempfile
-        from factor_scan_mem_optimized import cleanup_disk_space
+        from ic_scan_utils import cleanup_disk_space
 
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -195,7 +193,7 @@ class TestCleanupDiskSpace(unittest.TestCase):
             (d2 / "daily_pv_debug.h5").write_text("dummy")
 
             # Mock cfg.RDAGENT_WORKSPACE
-            with mock.patch('factor_scan_mem_optimized.WORKSPACE', workspace):
+            with mock.patch('ic_scan_utils.WORKSPACE', workspace):
                 saved = cleanup_disk_space(aggressive=False)
 
             # 验证debug文件已删除
@@ -210,7 +208,7 @@ class TestCleanupDiskSpace(unittest.TestCase):
     def test_cleanup_removes_redundant_h5(self):
         """有parquet时应删除h5"""
         import tempfile
-        from factor_scan_mem_optimized import cleanup_disk_space
+        from ic_scan_utils import cleanup_disk_space
 
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "workspace"
@@ -223,7 +221,7 @@ class TestCleanupDiskSpace(unittest.TestCase):
             h5.write_text("h5 data")
             pq.write_text("pq data")
 
-            with mock.patch('factor_scan_mem_optimized.WORKSPACE', workspace):
+            with mock.patch('ic_scan_utils.WORKSPACE', workspace):
                 saved = cleanup_disk_space(aggressive=False)
 
             self.assertFalse(h5.exists())
@@ -238,7 +236,7 @@ class TestArchiveTraces(unittest.TestCase):
         """应创建压缩的.gz文件"""
         import tempfile
         import time
-        from factor_scan_mem_optimized import archive_traces
+        from ic_scan_utils import archive_traces
 
         with tempfile.TemporaryDirectory() as tmpdir:
             trace_dir = Path(tmpdir) / "trace"
@@ -261,7 +259,7 @@ class TestArchiveTraces(unittest.TestCase):
         """不应归档近7天的文件"""
         import tempfile
         import time
-        from factor_scan_mem_optimized import archive_traces
+        from ic_scan_utils import archive_traces
 
         with tempfile.TemporaryDirectory() as tmpdir:
             trace_dir = Path(tmpdir) / "trace"
@@ -279,7 +277,7 @@ class TestArchiveTraces(unittest.TestCase):
 
     def test_archive_missing_dir(self):
         """目录不存在时应返回0"""
-        from factor_scan_mem_optimized import archive_traces
+        from ic_scan_utils import archive_traces
 
         archived = archive_traces(trace_dir="/nonexistent/path", max_age_days=7)
         self.assertEqual(archived, 0)
@@ -291,7 +289,7 @@ class TestScanSizes(unittest.TestCase):
     def test_scan_identifies_large_files(self):
         """应识别>=1MB的文件"""
         import tempfile
-        from factor_scan_mem_optimized import scan_sizes
+        from ic_scan_utils import scan_sizes
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # 创建不同大小的文件
@@ -309,7 +307,7 @@ class TestScanSizes(unittest.TestCase):
     def test_scan_returns_empty_for_small_files(self):
         """所有文件都小于阈值时应返回空列表"""
         import tempfile
-        from factor_scan_mem_optimized import scan_sizes
+        from ic_scan_utils import scan_sizes
 
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "tiny.txt").write_text("small")

@@ -33,9 +33,9 @@ def main():
     parser.add_argument("--feishu-url", default=None, help="飞书 Webhook URL（覆盖环境变量）")
     args = parser.parse_args()
 
-    if args.feishu-url:
+    if args.feishu_url:
         import feishu_notify
-        feishu_notify.FEISHU_WEBHOOK_URL = args.feishu-url
+        feishu_notify.FEISHU_WEBHOOK_URL = args.feishu_url
 
     print("=" * 70, flush=True)
     print("  因子 IC 分析 (新数据) — v5 分 session 处理版", flush=True)

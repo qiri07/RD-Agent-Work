@@ -15,7 +15,7 @@ CKPT = BASE / ".dl_ckpt.pkl"
 STOCK_LIST = BASE / ".astock_list.pkl"
 
 START = "2018-01-01"
-END = "2026-09-01"
+END = __import__('datetime').date.today().isoformat()
 SLEEP = 0.18   # 每只股票间隔（秒）
 TEMP_PARQUET = BASE / "git_ignore_folder" / "factor_implementation_source_data" / "daily_pv_temp.parquet"
 

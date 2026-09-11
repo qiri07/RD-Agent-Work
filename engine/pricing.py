@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 class PriceEngine:
     """价格处理引擎"""
 
-    def __init__(self, source_pq: Optional[Path] = None):
+    def __init__(self, source_pq: Optional[Path] = None, split_ratio_threshold: Optional[float] = None):
         self.source_pq = source_pq or cfg.DAILY_PV_PQ
         self.split_prev = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_PREV or "2026-09-01")
         self.split_curr = pd.Timestamp(cfg.BACKTEST_SPLIT_DATE_CURR or "2026-09-02")
-        self.split_ratio_threshold = cfg.BACKTEST_SPLIT_RATIO_THRESHOLD
+        self.split_ratio_threshold = split_ratio_threshold if split_ratio_threshold is not None else cfg.BACKTEST_SPLIT_RATIO_THRESHOLD
 
     def load_prices(self) -> pd.DataFrame:
         """加载价格数据"""
@@ -34,37 +34,61 @@ class PriceEngine:
     def compute_adjusted_prices(self, df: Optional[pd.DataFrame] = None) -> Tuple[pd.DataFrame, List[str]]:
         """
         计算复权价格：
-        - 检测拆分股票（前后收盘价比值 > 阈值）
+        - 自动检测所有拆分事件（前后收盘价比值 > 阈值）
         - 对拆分股票的拆分前价格乘以复权因子
+        - 支持多次拆分事件
         """
         if df is None:
             df = self.load_prices()
 
-        # 获取拆分日前后的收盘价
-        try:
-            prev_close = df.xs(self.split_prev, level='datetime')['$close']
-            curr_close = df.xs(self.split_curr, level='datetime')['$close']
-        except KeyError:
+        # 自动检测所有拆分日期
+        split_dates = self._detect_split_events(df)
+
+        if not split_dates:
             return df, []
 
-        common = prev_close.index.intersection(curr_close.index)
-        ratios = prev_close[common] / curr_close[common]
-        split_stocks = ratios[ratios > self.split_ratio_threshold].index.tolist()
-
-        if not split_stocks:
-            return df, []
-
-        # 创建复权价格 DataFrame
         adj = df.copy()
-        mask_pre_split = df.index.get_level_values('datetime') < self.split_curr
+        all_split_stocks = set()
 
-        for stock in split_stocks:
-            stock_mask = mask_pre_split & (df.index.get_level_values('instrument') == stock)
-            ratio = ratios[stock]
+        for split_date, ratio in split_dates:
+            mask_pre = df.index.get_level_values('datetime') < split_date
+            # 向量化操作：一次性处理所有股票
             for col in ['$open', '$close', '$high', '$low']:
-                adj.loc[stock_mask, col] = df.loc[stock_mask, col] * ratio
+                adj.loc[mask_pre, col] = df.loc[mask_pre, col] * ratio
+            # 记录发生变化的股票
+            changed_mask = adj['$close'] != df['$close']
+            stocks_changed = adj.loc[changed_mask].index.get_level_values('instrument').unique()
+            all_split_stocks.update(stocks_changed.tolist())
 
-        return adj, split_stocks
+        return adj, list(all_split_stocks)
+
+    def _detect_split_events(self, df: pd.DataFrame) -> List[Tuple[pd.Timestamp, pd.Timestamp, float]]:
+        """
+        自动检测拆分日期对
+        返回: [(curr_date, ratio), ...]  curr_date是拆分发生日，ratio是复权因子
+        """
+        close = df['$close']
+        prev_close = close.groupby(level='instrument').shift(1)
+        price_ratio = close / prev_close
+        price_ratio = price_ratio.replace([np.inf, -np.inf], np.nan)
+
+        # 找出所有极端比率的日期
+        extreme = price_ratio[abs(price_ratio) > self.split_ratio_threshold]
+        if len(extreme) == 0:
+            return []
+
+        # 按日期分组
+        from collections import Counter
+        date_counts = Counter(extreme.index.get_level_values(0))
+        batch_split_dates = {dt for dt, cnt in date_counts.items() if cnt >= 5}
+
+        events = []
+        for split_date in sorted(batch_split_dates):
+            day_extreme = extreme.xs(split_date, level='datetime')
+            avg_ratio = day_extreme.mean()
+            events.append((split_date, avg_ratio))
+
+        return events
 
     def build_price_map(self, df: pd.DataFrame) -> Dict[Tuple, Dict]:
         """构建快速价格查找字典"""
@@ -78,10 +102,13 @@ class PriceEngine:
             }
         return price_map
 
-    def get_stock_prices(self, df: pd.DataFrame, stock: str, 
+    def get_stock_prices(self, df: pd.DataFrame, stock: str,
                          start_date=None, end_date=None) -> pd.Series:
         """获取指定股票的价格序列"""
         stock_data = df.xs(stock, level='instrument')
+        # xs on single-level match may return DataFrame; ensure Series
+        if isinstance(stock_data, pd.DataFrame):
+            stock_data = stock_data.iloc[:, 0] if len(stock_data.columns) == 1 else stock_data.iloc[:, 0]
         if start_date:
             stock_data = stock_data[stock_data.index >= start_date]
         if end_date:

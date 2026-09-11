@@ -247,6 +247,11 @@ class DataValidator:
 
         corrected = self.prices.copy()
 
+        # 确保价格列和成交量列为浮点型，避免pandas 3.x的LossySetitemError
+        for col in ['$open', '$close', '$high', '$low', '$volume']:
+            if col in corrected.columns and corrected[col].dtype == 'int64':
+                corrected[col] = corrected[col].astype(float)
+
         for corr in corrections:
             action = corr['action']
 

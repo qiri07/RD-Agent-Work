@@ -37,6 +37,16 @@ RD-Agent-Work/
 │
 ├── trading_rules_core.py        # Board enum, limit/lot rules, limit price calc (no pandas)
 ├── trading_rules.py             # Aggregator wrapper + FactorRuleChecker (backward compat)
+├── engine/                      # Core engine modules
+│   ├── __init__.py              # Unified exports
+│   ├── pricing.py               # Price loading, split adjustment, returns
+│   ├── backtest.py              # Event-driven backtest engine
+│   ├── factor.py                # Factor loading, IC computation, synthesis
+│   ├── metrics.py               # Performance metrics (Sharpe, max DD, win rate)
+│   ├── cache.py                 # LRU memory cache for data loading
+│   ├── recompute.py             # Phase 1 (factor recompute) + Phase 2 (IC analysis)
+│   └── ic_scan.py               # compute_ic(), ic_analysis(), run_ic_scan()
+├── ic_scan_utils.py             # IC scan utilities: cleanup, trace archive, size scan
 ├── data_validator.py            # DataValidator: price/vol/gap/ST/split detection
 ├── data_corrector.py            # Auto-correction: splits, extreme prices, volume winsorize
 ├── factor_rule_corrector.py     # Factor-level trading rule enforcement
@@ -47,7 +57,9 @@ RD-Agent-Work/
 ├── run_pipeline.py              # Unified pipeline (IC + screening + push)
 ├── run_ic_fast.py               # High-performance IC analysis (v5, per-session)
 ├── run_ic_scan.py               # IC scan using clean debug data
-├── factor_scan_mem_optimized.py # Memory-efficient factor scanner + disk cleanup
+├── run_full_recompute.py        # Full recomputation + IC analysis (thin wrapper)
+├── run_factor_ic_scan.py        # Factor recompute + IC scan (thin wrapper)
+├── factor_scan_mem_optimized.py # Memory-efficient scanner entry point
 ├── batch_recompute_factors.py   # Sequential factor recomputation
 ├── parallel_recompute_factors.py # Parallel factor recomputation (multi-process)
 ├── full_factor_stock_selection.py # Multi-factor stock screening
@@ -55,7 +67,7 @@ RD-Agent-Work/
 ├── analyze_31_stocks.py         # 31-target stock analysis + backtest
 ├── feishu_notify.py             # Feishu webhook notification module
 │
-├── tests/                       # Unit tests (191 tests, 100% pass)
+├── tests/                       # Unit tests (459 tests, 100% pass)
 │   ├── test_config.py
 │   ├── test_trading_rules.py
 │   ├── test_data_corrector.py
@@ -155,7 +167,7 @@ python -m pytest tests/ -q            # Quiet mode
 python -m pytest tests/ --cov=.       # With coverage report
 ```
 
-**Current test coverage: 289 tests, 100% pass rate**
+**Current test coverage: 459 tests, 100% pass rate**
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -173,7 +185,22 @@ python -m pytest tests/ --cov=.       # With coverage report
 | `test_backtest_single_factors.py` | 22 | 100% |
 | `test_high_winrate_selection.py` | 23 | 100% |
 | `test_factor_scan_mem_optimized.py` | 16 | 100% |
-| `test_run_pipeline.py` | 21 | 100% |
+| `test_engine_modules.py` | 19 | 100% |
+| `test_cache.py` | 37 | 100% |
+| `test_metrics.py` | 17 | 100% |
+| `test_pricing.py` | 16 | 100% |
+| `test_factor_engine.py` | 18 | 100% |
+| `test_backtest_detail.py` | 17 | 100% |
+| `test_data_validator_detail.py` | 13 | 100% |
+| `test_ic_compute_detail.py` | 14 | 100% |
+| `test_engine_modules.py` | 19 | 100% |
+| `test_cache.py` | 37 | 100% |
+| `test_metrics.py` | 17 | 100% |
+| `test_pricing.py` | 16 | 100% |
+| `test_factor_engine.py` | 18 | 100% |
+| `test_backtest_detail.py` | 17 | 100% |
+| `test_data_validator_detail.py` | 13 | 100% |
+| `test_ic_compute_detail.py` | 14 | 100% |
 
 ## Data
 
@@ -189,10 +216,39 @@ python -m pytest tests/ --cov=.       # With coverage report
 - Python 3.11+ (virtualenv: `rdagent-env/`)
 - Dependencies: `pandas`, `numpy`, `scipy`, `pyarrow`, `h5py`
 
-## Recent Updates (2026-09-09)
+## Recent Updates (2026-09-11)
 
 ### Architecture Refactoring
-- **New Modules**: Created `engine/` (pricing, backtest, factor, metrics, cache) and `factors/` (factor_selector)
+- **New Modules**: Created `engine/recompute.py` (因子重算+IC分析), `engine/ic_scan.py` (IC计算), `ic_scan_utils.py` (扫描工具:清理/归档/大小扫描)
+- **Split Detection Fix**: Rewrote `engine/pricing.py` `_detect_split_events()` to auto-scan all data — now correctly finds **5,551 split stocks** (was 0 due to hardcoded date pair)
+- **Deleted Legacy Files**: Removed `high_winrate_stock_selection_v{3,4,5,6}.py` (4 files, 566 lines of dead code)
+- **Script Modularization**: Extracted business logic from entry-point scripts into engine modules:
+  - `run_full_recompute.py`: 365 → 19 lines
+  - `factor_scan_mem_optimized.py`: 312 → 47 lines
+  - `run_factor_ic_scan.py`: 279 → 31 lines
+
+### Bug Fixes
+- **Fixed**: `profit_factor` infinite return edge case in `engine/metrics.py` (no sells → returns 0)
+- **Fixed**: `get_stock_prices()` DataFrame handling in `engine/pricing.py` (`xs()` may return DataFrame)
+- **Fixed**: `DataValidator.apply_corrections()` requires prior `validate_all()` call; added dtype=float guard for pandas 3.x
+- **Fixed**: Volume anomaly detection tests now use 20+ day windows (single-day spike absorbed by σ)
+- **Fixed**: `compute_ic_session()` returns `factor_id` even when no daily IC (consistent API)
+
+### Testing
+- **Added**: 7 new test files (+130 tests) covering cache, metrics, pricing, factor engine, backtest detail, data validator detail, IC compute detail
+- **Total**: 459 tests, 100% pass rate (17s)
+
+### Documentation
+- `AUDIT_REPORT_20260911.md`: Full audit report
+- `CODE_QUALITY_CHECK_20260911.md`: Code quality findings
+- `FACTOR_IC_ANALYSIS_REPORT.md`: IC analysis results
+- `FULL_PIPELINE_REPORT.md`: Pipeline execution report
+- `OPTIMIZATION_REPORT.md`: Performance optimization report
+
+## Architecture Refactoring (2026-09-09)
+
+### New Modules
+- Created `engine/` (pricing, backtest, factor, metrics, cache) and `factors/` (factor_selector)
 - **Refactored Scripts**: Reduced file sizes by 30-79% through modularization
   - `backtest_top10.py`: 388 → 178 lines (↓54%)
   - `high_winrate_stock_selection_v3.py`: 497 → 301 lines (↓39%)
@@ -209,7 +265,7 @@ python -m pytest tests/ --cov=.       # With coverage report
 
 ### Testing
 - **Added**: 82 new tests covering engine modules and factor selection
-- **Total**: 289 tests, 100% pass rate
+- **Total**: 289 tests, 100% pass rate (at that time)
 - **Coverage**: All core modules fully tested
 
 ### Documentation
