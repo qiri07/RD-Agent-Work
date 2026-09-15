@@ -6,6 +6,7 @@
 """
 import hashlib
 import logging
+import sys
 from pathlib import Path
 from functools import lru_cache
 from typing import Optional, Callable, Any
@@ -14,19 +15,19 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def cache_with_ttl(maxsize: int = 64):
+def cache_with_maxsize(maxsize: int = 64):
     """
-    带TTL的LRU缓存装饰器
+    带最大条目数的 LRU 缓存装饰器（无 TTL，仅限制缓存大小）
 
     Args:
         maxsize: 最大缓存条目数（66个因子session × 每日IC + returns 字典，64足够）
     """
     def decorator(func: Callable) -> Callable:
         cached_func = lru_cache(maxsize=maxsize)(func)
-        
+
         def wrapper(*args, **kwargs):
             return cached_func(*args, **kwargs)
-        
+
         wrapper.cache_clear = cached_func.cache_clear
         wrapper.cache_info = cached_func.cache_info
         return wrapper
@@ -80,7 +81,7 @@ def load_cached_hdf(path: Path, key: str = "data", maxsize: int = 64, **kwargs) 
 
 
 class CacheManager:
-    """缓存管理器"""
+    """缓存管理器（基于 dict，支持简单容量上限警告）"""
     
     def __init__(self, max_size_mb: int = 500):
         self.max_size_mb = max_size_mb
@@ -91,9 +92,15 @@ class CacheManager:
         return self._cache.get(key)
     
     def set(self, key: str, value: Any) -> None:
-        """设置缓存值"""
-        # 简单实现，生产环境应使用更复杂的缓存策略
+        """设置缓存值，超过 max_size_mb 时打印警告"""
         self._cache[key] = value
+        if self.max_size_mb > 0:
+            size_mb = self.get_size_mb()
+            if size_mb > self.max_size_mb:
+                logger.warning(
+                    "CacheManager 超出内存上限: %.1f MB > %d MB，key=%s",
+                    size_mb, self.max_size_mb, key,
+                )
     
     def clear(self) -> None:
         """清除所有缓存"""
@@ -102,9 +109,19 @@ class CacheManager:
         gc.collect()
     
     def get_size_mb(self) -> float:
-        """获取缓存占用内存（MB）"""
-        import sys
-        total = sum(sys.getsizeof(v) for v in self._cache.values())
+        """获取缓存占用内存（MB）— 使用 pandas/numpy 精确计算 DataFrame 大小"""
+        total = 0
+        for v in self._cache.values():
+            if isinstance(v, pd.DataFrame):
+                # DataFrame: 数据块 + 索引开销
+                total += v.memory_usage(deep=True).sum()
+            elif isinstance(v, pd.Series):
+                total += v.memory_usage(deep=True)
+            elif hasattr(v, 'nbytes'):
+                # numpy array 等
+                total += v.nbytes
+            else:
+                total += sys.getsizeof(v)
         return total / 1024 / 1024
 
 

@@ -8,6 +8,7 @@
 
 import gc
 from pathlib import Path
+import logging
 
 import numpy as np
 import pandas as pd
@@ -15,30 +16,43 @@ from scipy.stats import rankdata
 
 from memory_utils import rss_mb, check_memory
 
+logger = logging.getLogger(__name__)
+
 
 # ═══════════════════════════════════════════════
 # 数据加载工具
 # ═══════════════════════════════════════════════
 def load_returns_chunked(source_path: Path, year_start=2023, year_end=2026) -> dict | None:
     """
-    分年加载 forward returns，避免一次性加载大文件到内存
+    分年加载 forward returns（5日），避免一次性加载大文件到内存
     返回: {year: Series} 或 None（当文件不存在时）
     """
     if not source_path.exists():
         print(f"[WARN] 返回数据文件不存在: {source_path}")
         return None
 
+    # 读取价格数据，使用 $close 列
     if source_path.suffix == '.parquet':
-        r_all = pd.read_parquet(source_path).iloc[:, 0]
+        df = pd.read_parquet(source_path)
+        close_col = '$close' if '$close' in df.columns else df.columns[0]
+        prices = df[close_col]
     else:
-        r_all = pd.read_hdf(source_path, key="data")
+        df = pd.read_hdf(source_path, key="data")
+        close_col = '$close' if '$close' in df.columns else df.columns[0]
+        prices = df[close_col]
+
+    # 计算 forward returns（5日向前收益）
+    prices_reset = prices.reset_index()
+    price_col = prices_reset.columns[-1]  # 原始价格列名（$close）
+    prices_reset['return_5d'] = prices_reset.groupby('instrument')[price_col].pct_change(5).shift(-5)
+    idx_name = prices_reset.columns[0]  # 'date'
+    ret_series = prices_reset.set_index([idx_name, 'instrument'])['return_5d'].dropna()
 
     years = {}
     for y in range(year_start, year_end + 1):
-        idx_name = r_all.index.names[0] if r_all.index.names else "date"
-        ym = r_all.index.get_level_values(idx_name).year == y
+        ym = ret_series.index.get_level_values(0).year == y
         if ym.sum() >= 30:
-            years[y] = r_all.loc[ym]
+            years[y] = ret_series.loc[ym]
             print(f"  年份 {y}: {years[y].shape[0]:,} 行")
     return years
 
@@ -136,7 +150,8 @@ def compute_ic_session(h5: Path, ret_lookup: dict) -> tuple:
     """
     try:
         df = pd.read_hdf(h5, key="data")
-    except Exception:
+    except Exception as e:
+        logger.warning(f"compute_ic_session 读取失败 {h5}: {e}")
         return None, {}
     col = df.columns[0]
     s = df[col].copy()

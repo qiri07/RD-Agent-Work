@@ -9,6 +9,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+# CLI 入口需要的依赖
+import pandas as pd
+
 # Webhook URL 和项目名称统一从 config 模块读取
 from config import FEISHU_WEBHOOK_URL, FEISHU_PROJECT_NAME
 
@@ -17,9 +20,6 @@ PROJECT_NAME = FEISHU_PROJECT_NAME
 # 飞书推送参数
 FEISHU_TIMEOUT_SEC = 10          # Webhook 请求超时（秒）
 FEISHU_FID_TRUNC_LEN = 20        # factor_id 显示截断长度
-
-# CLI 入口需要的依赖
-import pandas as pd
 
 
 def _build_payload(text: str) -> dict:

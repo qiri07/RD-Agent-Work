@@ -87,18 +87,13 @@ def recompute_factor(session: Path) -> tuple[bool, str]:
         os.chdir(session)
         start = time.time()
 
-        code = factor_py.read_text(encoding="utf-8")
-        func_match = re.search(r"def\s+(\w+)\s*\(\s*\):", code)
-        func_name = func_match.group(1) if func_match else None
-
-        if func_name:
-            namespace: dict = {}
-            exec(compile(code, str(factor_py), "exec"), namespace)
-            namespace[func_name]()
-        else:
-            exec(code, {})
+        from engine.safe_factor_exec import run_factor_script
+        success, info = run_factor_script(factor_py)
 
         elapsed = time.time() - start
+
+        if not success:
+            return False, f"{info} ({elapsed:.1f}s)"
 
         result_h5 = session / "result.h5"
         result_pq = session / "result.parquet"

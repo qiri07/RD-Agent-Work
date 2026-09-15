@@ -62,18 +62,14 @@ def worker_compute(session_dir: Path) -> tuple[str, bool, str]:
             return session_dir.name, False, "源数据不存在"
 
         # 构建命名空间并注入 df
-        namespace: dict = {"pd": pd, "np": np, "df": df}
         code = factor_py.read_text(encoding="utf-8")
-
-        # 提取函数名并执行
-        import re
         func_match = re.search(r"def\s+(\w+)\s*\(\s*\):", code)
-        if func_match:
-            func_name = func_match.group(1)
-            exec(compile(code, str(factor_py), "exec"), namespace)
-            namespace[func_name]()
-        else:
-            exec(code, namespace)
+        func_name = func_match.group(1) if func_match else None
+
+        from engine.safe_factor_exec import run_factor_script
+        success, info = run_factor_script(factor_py)
+        if not success:
+            return session_dir.name, False, f"安全校验失败: {info}"
 
         elapsed = time.time() - start
 

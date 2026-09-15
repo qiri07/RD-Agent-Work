@@ -14,12 +14,16 @@ A股数据质量验证，用于因子计算中的异常检测和数据修正。
   7. 自动修正建议生成与应用
 """
 
+import logging
+
 import numpy as np
 import pandas as pd
 from typing import Optional
 
 import config as cfg
 from trading_rules_core import Board, get_board, get_limit_pct, get_board_info
+
+logger = logging.getLogger(__name__)
 
 
 class DataValidator:
@@ -176,7 +180,7 @@ class DataValidator:
                         })
             except Exception as e:
                 # 记录异常但不中断验证流程
-                pass
+                logger.debug(f"_check_st_status 跳过 {stock}: {e}")
 
         if st_suspects:
             self.issues['st_suspects'] = {

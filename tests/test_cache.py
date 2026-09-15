@@ -17,18 +17,18 @@ import numpy as np
 
 from engine.cache import (
     CacheManager, get_cache, clear_global_cache,
-    load_cached_parquet, load_cached_hdf, cache_with_ttl
+    load_cached_parquet, load_cached_hdf, cache_with_maxsize
 )
 
 
 class TestCacheWithTTL(unittest.TestCase):
-    """测试 cache_with_ttl 装饰器"""
+    """测试 cache_with_maxsize 装饰器"""
 
     def test_basic_caching(self):
         """基本缓存功能"""
         call_count = [0]
 
-        @cache_with_ttl(maxsize=2)
+        @cache_with_maxsize(maxsize=2)
         def expensive_func(x):
             call_count[0] += 1
             return x * 2
@@ -50,7 +50,7 @@ class TestCacheWithTTL(unittest.TestCase):
 
     def test_cache_info(self):
         """缓存信息"""
-        @cache_with_ttl(maxsize=2)
+        @cache_with_maxsize(maxsize=2)
         def func(x):
             return x
 
@@ -62,7 +62,7 @@ class TestCacheWithTTL(unittest.TestCase):
 
     def test_cache_clear(self):
         """清除缓存"""
-        @cache_with_ttl(maxsize=2)
+        @cache_with_maxsize(maxsize=2)
         def func(x):
             return x
 

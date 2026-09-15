@@ -42,10 +42,11 @@ def main():
         
         ns = {}
         try:
-            exec(compile(code, str(factor_py), 'exec'), ns)
-            func_name = code.split('def ')[1].split('(')[0].strip()
-            if func_name in ns:
-                ns[func_name]()
+            from engine.safe_factor_exec import run_factor_script
+            success, info = run_factor_script(factor_py, extra_vars={"pd": pd})
+            if not success:
+                print(f"  ❌ {sid}: {info}")
+                continue
             # Verify
             if h5.exists():
                 df = pd.read_hdf(h5, key='data')

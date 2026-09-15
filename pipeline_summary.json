@@ -1,15 +1,8 @@
 {
-  "timestamp": "2026-09-11T14:28:04.147329",
+  "timestamp": "2026-09-12 22:08:56",
+  "duration_s": 1573.2920382022858,
   "ic_factors": 56,
-  "ic_mean": 0.07489930161353729,
-  "backtest_return": -90.07524695742362,
-  "max_drawdown": -93.30839051609145,
-  "final_nav": 99247.53042576386,
-  "top_stocks": [
-    "SZ300308",
-    "SH688766",
-    "SH600183",
-    "SZ300033",
-    "SH688521"
-  ]
+  "backtest_return": 0,
+  "sharpe_ratio": 0,
+  "max_drawdown": 0
 }

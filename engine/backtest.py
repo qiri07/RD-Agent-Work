@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Callable
 from dataclasses import dataclass, field
 import config as cfg
+from trading_rules import get_board, get_limit_pct, is_limit_up, is_limit_down
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,15 @@ class BacktestEngine:
             key = (date, stock)
             if key not in price_map:
                 return
-            sell_price = price_map[key]['close']
+            # 涨跌停检查：跌停板禁止卖出
+            row = price_map[key]
+            prev_key = (dates[date_idx - 1], stock) if date_idx > 0 else None
+            if prev_key and prev_key in price_map:
+                prev_close = price_map[prev_key]['close']
+                if prev_close > 0 and is_limit_down(row['close'], prev_close, get_board(stock)):
+                    logger.debug(f"  {stock} 跌停板，跳过卖出")
+                    return
+            sell_price = row['close']
             pos = positions[stock]
             trade_value = pos.shares * sell_price
             cost = trade_value * (self.commission_rate + self.slippage_rate)
@@ -120,9 +129,17 @@ class BacktestEngine:
             key = (date, stock)
             if key not in price_map:
                 return
-            buy_price = price_map[key]['open']
+            row = price_map[key]
+            buy_price = row['open']
             if buy_price <= 0:
                 return
+            # 涨跌停检查：涨停板禁止买入
+            prev_key = (dates[date_idx - 1], stock) if date_idx > 0 else None
+            if prev_key and prev_key in price_map:
+                prev_close = price_map[prev_key]['close']
+                if prev_close > 0 and is_limit_up(row['open'], prev_close, get_board(stock)):
+                    logger.debug(f"  {stock} 涨停板，跳过买入")
+                    return
             invest = min(value_target, cash * 0.99)
             if invest < self.min_trade_value:
                 return

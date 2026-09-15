@@ -150,8 +150,9 @@ class TestRunPhase2ICAnalysis(unittest.TestCase):
 
     def test_no_factors(self):
         """无因子结果"""
-        with mock.patch('engine.recompute._load_factor_results', return_value={}), \
-             mock.patch('engine.recompute.logger'):
+        import engine.recompute.orchestrator as orch_mod
+        with mock.patch.object(orch_mod, 'load_factor_results', return_value={}), \
+             mock.patch.object(orch_mod, 'logger'):
             result = run_phase2_ic_analysis()
             self.assertIsNone(result)
 
@@ -164,12 +165,15 @@ class TestRunPhase2ICAnalysis(unittest.TestCase):
             'IC_pos_ratio_5d': [0.6],
             'n_days': [200],
         })
-        import engine.recompute as recompute_mod
-        with mock.patch.object(recompute_mod, '_load_factor_results', return_value={'f1': pd.Series([1.0])}), \
-             mock.patch.object(recompute_mod, '_load_returns'), \
+        import engine.recompute.orchestrator as orch_mod
+        with mock.patch.object(orch_mod, 'load_factor_results', return_value={'f1': pd.Series([1.0])}), \
+             mock.patch.object(orch_mod, 'load_returns'), \
              mock.patch('engine.ic_scan.ic_analysis', return_value=ic_df), \
-             mock.patch.object(recompute_mod, 'ic_analysis_yearly', return_value=None):
-            result = recompute_mod.run_phase2_ic_analysis()
+             mock.patch.object(orch_mod, 'ic_analysis_yearly', return_value=None), \
+             mock.patch.object(ic_df, 'to_parquet'), \
+             mock.patch.object(ic_df, 'to_csv'), \
+             mock.patch('builtins.open', mock.mock_open()):
+            result = run_phase2_ic_analysis()
             self.assertIsNotNone(result)
             ic_res, yearly_res, report = result
             self.assertIsInstance(ic_res, pd.DataFrame)
@@ -212,10 +216,14 @@ class TestRunFullRecompute(unittest.TestCase):
             'IC_pos_ratio_5d': [0.6],
             'n_days': [200],
         })
-        import engine.recompute as recompute_mod
-        with mock.patch.object(recompute_mod, 'run_phase1_recompute', return_value=([], [])), \
-             mock.patch.object(recompute_mod, 'run_phase2_ic_analysis', return_value=(ic_df, None, ic_df)):
-            result = recompute_mod.run_full_recompute()
+        import engine.recompute.report as report_mod
+        import engine.recompute.orchestrator as orch_mod
+        with mock.patch.object(orch_mod, 'run_phase1_recompute', return_value=([], [])), \
+             mock.patch.object(orch_mod, 'run_phase2_ic_analysis', return_value=(ic_df, None, ic_df)), \
+             mock.patch.object(report_mod, 'print_summary'), \
+             mock.patch('builtins.open', mock.mock_open()), \
+             mock.patch('engine.recompute.report.json.dump'):
+            result = report_mod.run_full_recompute()
             self.assertIsNotNone(result)
 
 

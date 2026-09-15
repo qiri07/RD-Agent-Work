@@ -43,9 +43,11 @@ def main():
         
         ns = {}
         try:
-            exec(compile(code, str(factor_py), 'exec'), ns)
-            if fname in ns:
-                ns[fname]()
+            from engine.safe_factor_exec import run_factor_script
+            success, info = run_factor_script(factor_py, extra_vars={"pd": pd})
+            if not success:
+                print(f"  ❌ {sid}: {info}")
+                continue
             # Also ensure HDF5 output exists
             pq = sdir / 'result.parquet'
             h5 = sdir / 'result.h5'
