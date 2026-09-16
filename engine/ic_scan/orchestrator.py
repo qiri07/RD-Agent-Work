@@ -10,7 +10,7 @@ import time
 from typing import Optional
 import pandas as pd
 import config as cfg
-from .core import IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STocks_PER_DAY
+from .core import IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STOCKS_PER_DAY
 from .analysis import ic_analysis
 from .data import load_returns_from_sessions, validate_data_consistency
 

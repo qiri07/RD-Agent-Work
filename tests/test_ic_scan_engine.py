@@ -16,7 +16,7 @@ import pandas as pd
 
 from engine.ic_scan import (
     compute_ic, ic_analysis, run_ic_scan,
-    IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STocks_PER_DAY,
+    IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STOCKS_PER_DAY,
 )
 
 
@@ -166,7 +166,7 @@ class TestRunICScan(unittest.TestCase):
         """IC_FORWARD_DAYS 常量正确"""
         self.assertEqual(IC_FORWARD_DAYS, [1, 3, 5])
         self.assertEqual(IC_WINSORIZE, 0.01)
-        self.assertEqual(IC_MIN_STocks_PER_DAY, 50)
+        self.assertEqual(IC_MIN_STOCKS_PER_DAY, 50)
 
 
 if __name__ == '__main__':

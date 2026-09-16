@@ -22,7 +22,7 @@ from engine.ic_scan import (
     validate_data_consistency,
     IC_FORWARD_DAYS,
     IC_WINSORIZE,
-    IC_MIN_STocks_PER_DAY,
+    IC_MIN_STOCKS_PER_DAY,
 )
 
 
@@ -207,8 +207,8 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(IC_WINSORIZE, 0.01)
 
     def test_ic_min_stocks_per_day(self):
-        """IC_MIN_STocks_PER_DAY 应为 50"""
-        self.assertEqual(IC_MIN_STocks_PER_DAY, 50)
+        """IC_MIN_STOCKS_PER_DAY 应为 50"""
+        self.assertEqual(IC_MIN_STOCKS_PER_DAY, 50)
 
 
 if __name__ == '__main__':

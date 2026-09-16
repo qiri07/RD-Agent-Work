@@ -12,6 +12,10 @@ venv/
 env/
 *.coverage
 
+# Environment secrets
+.env
+.env.local
+
 # Data files
 *.h5
 *.parquet

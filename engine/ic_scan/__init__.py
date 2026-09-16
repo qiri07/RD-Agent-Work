@@ -9,7 +9,7 @@ from .core import (
     compute_ic,
     IC_FORWARD_DAYS,
     IC_WINSORIZE,
-    IC_MIN_STocks_PER_DAY,
+    IC_MIN_STOCKS_PER_DAY,
 )
 from .analysis import ic_analysis
 from .data import load_returns_from_sessions, validate_data_consistency
@@ -26,6 +26,6 @@ __all__ = [
     'run_ic_scan',
     'IC_FORWARD_DAYS',
     'IC_WINSORIZE',
-    'IC_MIN_STocks_PER_DAY',
+    'IC_MIN_STOCKS_PER_DAY',
     'logger',
 ]

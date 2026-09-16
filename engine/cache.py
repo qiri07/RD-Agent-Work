@@ -121,7 +121,11 @@ class CacheManager:
                 # numpy array 等
                 total += v.nbytes
             else:
-                total += sys.getsizeof(v)
+                try:
+                    total += sys.getsizeof(v)
+                except TypeError:
+                    # 某些类型不支持 getsizeof，忽略
+                    pass
         return total / 1024 / 1024
 
 

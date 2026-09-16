@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # IC 分析参数
 IC_FORWARD_DAYS = [1, 3, 5]   # 向前收益天数
 IC_WINSORIZE = 0.01            # 因子值缩尾处理
-IC_MIN_STocks_PER_DAY = 50     # 每日最少股票数
+IC_MIN_STOCKS_PER_DAY = 50     # 每日最少股票数
 
 
 def compute_ic(factor_df: pd.Series, returns_df: pd.Series,
@@ -43,7 +43,7 @@ def compute_ic(factor_df: pd.Series, returns_df: pd.Series,
         mask = f_dates == dt_val
         fg = f[mask]
         rg = r[mask]
-        if len(fg) >= IC_MIN_STocks_PER_DAY:
+        if len(fg) >= IC_MIN_STOCKS_PER_DAY:
             ic_val = fg.corr(rg, method="spearman")
             if not pd.isna(ic_val):
                 daily_ic.loc[mask] = ic_val

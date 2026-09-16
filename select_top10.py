@@ -101,6 +101,8 @@ def screen_top10(ic_df, top_n=10):
     top_stocks.to_csv(out_csv, index=False)
     logger.info("已保存: %s", out_csv)
 
+    # 从合成结果中提取最新交易日
+    latest_date = result_df["datetime"].max()
     logger.info("=" * 60)
     logger.info("  TOP %d 股票 (%s)", top_k, latest_date.strftime("%Y-%m-%d"))
     logger.info("=" * 60)

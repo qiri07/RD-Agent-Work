@@ -8,7 +8,7 @@ import logging
 from typing import Dict
 import numpy as np
 import pandas as pd
-from .core import IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STocks_PER_DAY, compute_ic
+from .core import IC_FORWARD_DAYS, IC_WINSORIZE, IC_MIN_STOCKS_PER_DAY, compute_ic
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
                     m = f_dates_tmp == dt_val
                     fg = f[m]
                     rg = r[m]
-                    if len(fg) >= IC_MIN_STocks_PER_DAY:
+                    if len(fg) >= IC_MIN_STOCKS_PER_DAY:
                         ic_v = fg.corr(rg, method="spearman")
                         if not pd.isna(ic_v):
                             daily_ic_vals.append(ic_v)

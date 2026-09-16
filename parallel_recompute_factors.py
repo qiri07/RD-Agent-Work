@@ -61,11 +61,6 @@ def worker_compute(session_dir: Path) -> tuple[str, bool, str]:
         else:
             return session_dir.name, False, "源数据不存在"
 
-        # 构建命名空间并注入 df
-        code = factor_py.read_text(encoding="utf-8")
-        func_match = re.search(r"def\s+(\w+)\s*\(\s*\):", code)
-        func_name = func_match.group(1) if func_match else None
-
         from engine.safe_factor_exec import run_factor_script
         success, info = run_factor_script(factor_py)
         if not success:
