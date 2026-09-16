@@ -152,8 +152,15 @@ def compute_ic_session(h5: Path, ret_lookup: dict) -> tuple:
     except Exception as e:
         logger.warning(f"compute_ic_session 读取失败 {h5}: {e}")
         return None, {}
-    col = df.columns[0]
-    s = df[col].copy()
+
+    # 处理 DataFrame 或 Series
+    if isinstance(df, pd.DataFrame):
+        col = df.columns[0]
+        s = df[col].copy()
+    else:
+        s = df.copy()
+
+    # 标准化索引名称为 datetime
     if s.index.names[0] != "datetime":
         s.index = s.index.set_names(["datetime", "instrument"])
     # 转为 DataFrame

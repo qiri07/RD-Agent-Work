@@ -82,8 +82,12 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
             continue
         try:
             df = pd.read_hdf(h5, key="data")
-            col = df.columns[0]
-            s = df[col].copy()
+            # 处理 DataFrame 或 Series
+            if isinstance(df, pd.DataFrame):
+                col = df.columns[0]
+                s = df[col].copy()
+            else:
+                s = df.copy()
             if s.index.names[0] != "datetime":
                 s.index = s.index.set_names(["datetime", "instrument"])
             s = s.reset_index()

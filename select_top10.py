@@ -53,9 +53,17 @@ def load_factors(factor_ids):
             logger.warning("跳过: %s (无h5)", fid[:20])
             continue
         try:
+            h5 = WS / fid / "result.h5"
+            if not h5.exists():
+                logger.warning("跳过: %s (无h5)", fid[:20])
+                continue
             df = pd.read_hdf(h5, key="data")
-            col = df.columns[0]
-            s = df[col].copy()
+            # 处理 DataFrame 或 Series
+            if isinstance(df, pd.DataFrame):
+                col = df.columns[0]
+                s = df[col].copy()
+            else:
+                s = df.copy()
             # 确保索引名为 (datetime, instrument)
             if s.index.names != ["datetime", "instrument"]:
                 s.index = s.index.set_names(["datetime", "instrument"])

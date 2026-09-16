@@ -40,8 +40,12 @@ class FactorLoader:
                 df = pd.read_hdf(src, key="data")
             else:
                 df = pd.read_parquet(src)
-            fname = df.columns[0]
-            s = df[fname].copy()
+            # 处理 DataFrame 或 Series
+            if isinstance(df, pd.DataFrame):
+                fname = df.columns[0]
+                s = df[fname].copy()
+            else:
+                s = df.copy()
             s = self._normalize_index(s)
             s = s.ffill().fillna(0)
             s = s[~s.index.duplicated(keep='first')]

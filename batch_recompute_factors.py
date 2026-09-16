@@ -124,7 +124,10 @@ def main():
           f"{' (全部)' if not PHASE1 and not PHASE2 else ''}")
     print("=" * 60)
     print(f"源 parquet: {SRC_PQ.stat().st_size / 1024 / 1024:.0f} MB")
-    print(f"源 h5:      {SRC_H5.stat().st_size / 1024 / 1024:.0f} MB")
+    if SRC_H5.exists():
+        print(f"源 h5:      {SRC_H5.stat().st_size / 1024 / 1024:.0f} MB")
+    else:
+        print(f"源 h5:      N/A (将使用 parquet)")
     print()
 
     sessions = get_sessions()

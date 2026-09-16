@@ -51,7 +51,9 @@ def main():
 
     # 加载股票列表
     if STOCK_LIST.exists():
-        stocks = pd.read_pickle(STOCK_LIST).tolist()
+        stocks = pd.read_pickle(STOCK_LIST)
+        if isinstance(stocks, pd.Series):
+            stocks = stocks.tolist()
         print(f"股票列表: {len(stocks)} 只")
     else:
         print("请先运行获取股票列表脚本")
