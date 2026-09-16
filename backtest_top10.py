@@ -114,7 +114,7 @@ def main():
     logger.info("  %10s  %12s  %12s  %8s", "-"*10, "-"*12, "-"*12, "-"*8)
     for idx, row in monthly.iterrows():
         sign = "+" if row['ret'] >= 0 else ""
-        logger.info("  %10s  %12,.0f  %12,.0f  %s%6.2f%%", str(idx), row['start_val'], row['end_val'], sign, row['ret'])
+        logger.info("  %10s  %12.0f  %12.0f  %s%6.2f%%", str(idx), row['start_val'], row['end_val'], sign, row['ret'])
 
     # ASCII 净值曲线
     logger.info("\n净值曲线（ASCII）")

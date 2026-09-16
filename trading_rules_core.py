@@ -33,15 +33,16 @@ class Board(Enum):
 
 def get_board(stock_code: str) -> Board:
     """根据股票代码判断板块"""
-    if stock_code.startswith("SH"):
-        if stock_code.startswith("SH688"):
+    code = stock_code.upper()
+    if code.startswith("SH"):
+        if code.startswith("SH688"):
             return Board.SH_STAR
         return Board.SH_MAIN
-    elif stock_code.startswith("SZ"):
-        if stock_code.startswith("SZ300"):
+    elif code.startswith("SZ"):
+        if code.startswith("SZ300"):
             return Board.SZ_GEM
         return Board.SZ_MAIN
-    elif stock_code.startswith("BJ"):
+    elif code.startswith("BJ"):
         return Board.BJ
     return Board.UNKNOWN
 

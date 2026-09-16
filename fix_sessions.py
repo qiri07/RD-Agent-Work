@@ -35,18 +35,17 @@ def recompute_factor_for_session(sid):
     factor_py = session / 'factor.py'
     if not factor_py.exists():
         return sid, False, 'no factor.py'
+    old_cwd = os.getcwd()
     try:
-        old_cwd = os.getcwd()
         os.chdir(session)
         code = factor_py.read_text(encoding='utf-8')
         func_match = re.search(r'def\s+(\w+)\s*\(\s*\):', code)
         func_name = func_match.group(1) if func_match else None
         namespace = {}
-        try:
-            from engine.safe_factor_exec import run_factor_script
-            success, info = run_factor_script(factor_py)
-            if not success:
-                return sid, False, info
+        from engine.safe_factor_exec import run_factor_script
+        success, info = run_factor_script(factor_py)
+        if not success:
+            return sid, False, info
         result_h5 = session / 'result.h5'
         if result_h5.exists():
             df = pd.read_hdf(result_h5, key='data')
