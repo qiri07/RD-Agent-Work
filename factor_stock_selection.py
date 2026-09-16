@@ -51,10 +51,12 @@ def load_factor(factor_id):
 
 def standardize(df):
     """对各列做 Z-score 标准化"""
+    import numpy as np
     result = df.copy()
     for col in result.columns:
         mean, std = result[col].mean(), result[col].std()
-        result[col] = 0 if std == 0 else (result[col] - mean) / std
+        # std 可能为 NaN（单值）或 0，统一处理
+        result[col] = 0 if (std == 0 or pd.isna(std)) else (result[col] - mean) / std
     return result
 
 

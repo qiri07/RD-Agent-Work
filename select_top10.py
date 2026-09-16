@@ -87,7 +87,17 @@ def screen_top10(ic_df, top_n=10):
 
     # 使用 engine 统一合成逻辑
     logger.info("合成综合得分...")
-    result_df = synthesize_daily_composite(factor_data)
+    # 从因子数据中提取最新交易日（synthesize_daily_composite 内部也会自动选择）
+    factor_dates = []
+    for s in factor_data.values():
+        dates_in_factor = s.index.get_level_values("datetime").dropna().unique()
+        if len(dates_in_factor) > 0:
+            factor_dates.append(dates_in_factor.max())
+    latest_date = max(factor_dates) if factor_dates else None
+    if latest_date is not None:
+        result_df = synthesize_daily_composite(factor_data, date=latest_date)
+    else:
+        result_df = synthesize_daily_composite(factor_data)
     if result_df.empty:
         raise RuntimeError("综合得分为空")
 
@@ -101,8 +111,7 @@ def screen_top10(ic_df, top_n=10):
     top_stocks.to_csv(out_csv, index=False)
     logger.info("已保存: %s", out_csv)
 
-    # 从合成结果中提取最新交易日
-    latest_date = result_df["datetime"].max()
+    # latest_date 已在上方从因子数据中提取
     logger.info("=" * 60)
     logger.info("  TOP %d 股票 (%s)", top_k, latest_date.strftime("%Y-%m-%d"))
     logger.info("=" * 60)

@@ -64,9 +64,11 @@ def run_factor_script(factor_py: Path, extra_vars: Optional[dict] = None) -> tup
         return False, "无法加载 factor.py 模块"
 
     module = importlib.util.module_from_spec(spec)
-    namespace = {"__name__": "factor_module", "__file__": str(factor_py)}
+    # 将 extra_vars 注入模块命名空间（exec_module 使用 module.__dict__ 作为执行上下文）
     if extra_vars:
-        namespace.update(extra_vars)
+        module.__dict__.update(extra_vars)
+    module.__dict__["__name__"] = "factor_module"
+    module.__dict__["__file__"] = str(factor_py)
 
     try:
         spec.loader.exec_module(module)
