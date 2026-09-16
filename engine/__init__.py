@@ -14,6 +14,7 @@ from engine.recompute import (
     ic_analysis_yearly, generate_ic_report, print_summary, run_full_recompute,
 )
 from engine.ic_scan import compute_ic, ic_analysis, run_ic_scan, IC_FORWARD_DAYS, IC_MIN_STocks_PER_DAY
+from engine.data_freshness import check_data_freshness, get_price_data_cutoff, get_factor_data_cutoff
 
 __all__ = [
     'PriceEngine',
@@ -42,4 +43,7 @@ __all__ = [
     'run_ic_scan',
     'IC_FORWARD_DAYS',
     'IC_MIN_STocks_PER_DAY',
+    'check_data_freshness',
+    'get_price_data_cutoff',
+    'get_factor_data_cutoff',
 ]

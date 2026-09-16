@@ -135,7 +135,7 @@ def send_top_stocks(stocks_df, top_n: int = 10) -> bool:
     return send_feishu("\n".join(lines))
 
 
-def send_combined_report(ic_df, stocks_df, top_n: int = 10) -> bool:
+def send_combined_report(ic_df, stocks_df, top_n: int = 10, data_freshness: dict = None) -> bool:
     """
     推送完整的分析报告（IC + 选股）到飞书。
 
@@ -143,6 +143,7 @@ def send_combined_report(ic_df, stocks_df, top_n: int = 10) -> bool:
         ic_df:     IC 分析结果 DataFrame
         stocks_df: 选股结果 DataFrame
         top_n:     展示数量
+        data_freshness: 数据时效检查结果 dict
 
     Returns:
         发送是否成功
@@ -153,6 +154,19 @@ def send_combined_report(ic_df, stocks_df, top_n: int = 10) -> bool:
     parts.append(f"📈 **RD-Agent 因子分析与选股报告**")
     parts.append(f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     parts.append("")
+
+    # 数据时效信息
+    if data_freshness:
+        pc = data_freshness.get("price_cutoff")
+        fc = data_freshness.get("factor_cutoff")
+        lag = data_freshness.get("days_lag")
+        freshness = data_freshness.get("freshness", "未知")
+        parts.append(f"📅 价格数据截止: {pc.strftime('%Y-%m-%d') if pc else 'N/A'}")
+        parts.append(f"📅 因子数据截止: {fc.strftime('%Y-%m-%d') if fc else 'N/A'}")
+        if lag is not None:
+            parts.append(f"⏱  数据延迟: {lag} 天")
+        parts.append(f"✅ 数据状态: {freshness}")
+        parts.append("")
 
     # IC 结果摘要
     parts.append("━━━ 📊 因子 IC 分析 ━━━")

@@ -23,6 +23,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent))
 
 import config as cfg
+from engine.data_freshness import check_data_freshness
 from feishu_notify import send_combined_report
 
 logger = logging.getLogger(__name__)
@@ -35,26 +36,40 @@ def log(msg: str):
     logger.info(msg)
 
 
-def phase_recompute_factors(dry_run: bool = False) -> bool:
+def phase_recompute_factors(dry_run: bool = False, data_freshness: dict = None) -> bool:
     """Phase 1: 因子重算"""
     log("\n" + "=" * 70)
     log("  Phase 1: 因子重算")
     log("=" * 70)
-    
+
+    # 前置数据时效检查
+    if data_freshness is None:
+        data_freshness = check_data_freshness()
+    log(f"  📅 价格数据截止: {data_freshness['price_cutoff'].date() if data_freshness['price_cutoff'] else 'N/A'}")
+    log(f"  📅 因子数据截止: {data_freshness['factor_cutoff'].date() if data_freshness['factor_cutoff'] else 'N/A'}")
+    log(f"  ✅ 数据状态: {data_freshness['freshness']}")
+
     if dry_run:
         log("  [DRY RUN] 跳过因子重算")
         return True
-    
+
     cmd = [sys.executable, "batch_recompute_factors.py", "--phase2"]
     result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT))
     return result.returncode == 0
 
 
-def phase_ic_analysis(feishu_url: str = None) -> pd.DataFrame:
+def phase_ic_analysis(feishu_url: str = None, data_freshness: dict = None) -> pd.DataFrame:
     """Phase 2: IC 分析"""
     log("\n" + "=" * 70)
     log("  Phase 2: IC 分析")
     log("=" * 70)
+
+    # 前置数据时效检查
+    if data_freshness is None:
+        data_freshness = check_data_freshness()
+    log(f"  📅 价格数据截止: {data_freshness['price_cutoff'].date() if data_freshness['price_cutoff'] else 'N/A'}")
+    log(f"  📅 因子数据截止: {data_freshness['factor_cutoff'].date() if data_freshness['factor_cutoff'] else 'N/A'}")
+    log(f"  ✅ 数据状态: {data_freshness['freshness']}")
     
     cmd = [sys.executable, "run_ic_fast.py"]
     if feishu_url:
@@ -160,19 +175,20 @@ def phase_performance_evaluation(backtest_metrics: dict) -> dict:
     }
 
 
-def phase_feishu_push(ic_df: pd.DataFrame, stocks_df: pd.DataFrame, 
-                      perf_metrics: dict, feishu_url: str = None) -> bool:
+def phase_feishu_push(ic_df: pd.DataFrame, stocks_df: pd.DataFrame,
+                      perf_metrics: dict, feishu_url: str = None,
+                      data_freshness: dict = None) -> bool:
     """Phase 6: 飞书推送"""
     log("\n" + "=" * 70)
     log("  Phase 6: 飞书推送")
     log("=" * 70)
-    
+
     if feishu_url:
         import feishu_notify
         feishu_notify.FEISHU_WEBHOOK_URL = feishu_url
-    
+
     try:
-        success = send_combined_report(ic_df, stocks_df, top_n=10)
+        success = send_combined_report(ic_df, stocks_df, top_n=10, data_freshness=data_freshness)
         if success:
             log("  ✅ 飞书推送成功")
         else:
@@ -197,23 +213,30 @@ def main():
     log("  完整因子分析流水线启动")
     log(f"  时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
     log("=" * 70)
-    
+
+    # 前置数据时效检查
+    data_freshness = check_data_freshness()
+    log(f"  📅 价格数据截止: {data_freshness['price_cutoff'].date() if data_freshness['price_cutoff'] else 'N/A'}")
+    log(f"  📅 因子数据截止: {data_freshness['factor_cutoff'].date() if data_freshness['factor_cutoff'] else 'N/A'}")
+    log(f"  ✅ 数据状态: {data_freshness['freshness']}")
+
     results = {
         'ic_df': pd.DataFrame(),
         'stocks_df': pd.DataFrame(),
         'backtest_metrics': {},
-        'performance_metrics': {}
+        'performance_metrics': {},
+        'data_freshness': data_freshness,
     }
-    
+
     # Phase 1: 因子重算
     if args.phase in ["all", "recompute"]:
-        if not phase_recompute_factors(args.dry_run):
+        if not phase_recompute_factors(args.dry_run, data_freshness=data_freshness):
             log("❌ 因子重算失败")
             return 1
-    
+
     # Phase 2: IC 分析
     if args.phase in ["all", "ic"]:
-        results['ic_df'] = phase_ic_analysis(feishu_url=args.feishu_url)
+        results['ic_df'] = phase_ic_analysis(feishu_url=args.feishu_url, data_freshness=data_freshness)
         if results['ic_df'].empty:
             log("⚠️  IC 分析结果为空")
     
@@ -237,8 +260,9 @@ def main():
         if results['ic_df'].empty:
             log("⚠️  没有 IC 结果，跳过推送")
         else:
-            phase_feishu_push(results['ic_df'], results['stocks_df'], 
-                            results['performance_metrics'], feishu_url=args.feishu_url)
+            phase_feishu_push(results['ic_df'], results['stocks_df'],
+                            results['performance_metrics'], feishu_url=args.feishu_url,
+                            data_freshness=data_freshness)
     
     # 保存汇总结果
     summary = {

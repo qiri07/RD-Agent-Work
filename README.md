@@ -212,6 +212,15 @@ python -m pytest tests/ --cov=.       # With coverage report
 
 ## Recent Updates (2026-09-16)
 
+### New: Data Freshness Check
+- **Added**: `engine/data_freshness.py` — 前置检查价格数据与因子数据截止日
+  - `get_price_data_cutoff()`: 读取 daily_pv_full.parquet 最新交易日（高效，只读 index）
+  - `get_factor_data_cutoff()`: 扫描所有因子目录获取最新计算日期
+  - `check_data_freshness()`: 综合报告延迟天数与状态
+- **Integrated**: `run_full_pipeline.py` Phase 1/2 前自动执行数据时效检查并打印
+- **Integrated**: `run_ic_fast.py` IC 分析前检查数据时效
+- **Updated**: `feishu_notify.py send_combined_report()` 新增 `data_freshness` 参数，推送时显示数据截止日和延迟状态
+
 ### Bug Fixes
 - **Fixed**: `FactorEngine.load_factor/load_factors` 绑定到错误 `self`（类属性赋值问题），导致因子加载始终返回空。改为显式委托方法
 - **Fixed**: `backtest_top10.py` 因子加载仅检查 `result.h5`，在 IC 清理阶段删除 h5 后回测失败。增加 `result.parquet` 回退

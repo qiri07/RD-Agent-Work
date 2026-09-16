@@ -17,6 +17,7 @@ pd.set_option('display.width', 200)
 
 import config as cfg
 from ic_compute import compute_ic_session
+from engine.data_freshness import check_data_freshness
 
 BASE = cfg.PROJECT_ROOT
 WS = cfg.RDAGENT_WORKSPACE
@@ -41,6 +42,12 @@ def main():
     print("  因子 IC 分析 (新数据) — v5 分 session 处理版", flush=True)
     print("=" * 70, flush=True)
     t_main = time.time()
+
+    # 前置数据时效检查
+    freshness = check_data_freshness()
+    print(f"📅 价格数据截止: {freshness['price_cutoff'].date() if freshness['price_cutoff'] else 'N/A'}", flush=True)
+    print(f"📅 因子数据截止: {freshness['factor_cutoff'].date() if freshness['factor_cutoff'] else 'N/A'}", flush=True)
+    print(f"✅ 数据状态: {freshness['freshness']}", flush=True)
 
     # Step 1: 加载价格数据，计算 forward returns → 字典（分年加载避免 OOM）
     print("加载价格数据...", flush=True)
@@ -145,7 +152,7 @@ def main():
     # 飞书推送
     try:
         stocks_df = pd.read_csv(BASE / "top10_stocks_new.csv")
-        send_combined_report(ic_out, stocks_df, top_n=10)
+        send_combined_report(ic_out, stocks_df, top_n=10, data_freshness=freshness)
     except Exception as e:
         print(f"⚠️ 飞书推送失败: {e}", flush=True)
 
