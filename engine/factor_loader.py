@@ -21,17 +21,25 @@ class FactorLoader:
 
     def load_factor(self, factor_id: str) -> Optional[pd.Series]:
         """
-        加载单个因子数据
+        加载单个因子数据（优先 result.h5，回退 result.parquet）
 
         Returns:
             Series with MultiIndex (datetime, instrument)
         """
         h5 = self.workspace / factor_id / "result.h5"
-        if not h5.exists():
-            logger.warning(f"因子文件不存在: {h5}")
+        pq = self.workspace / factor_id / "result.parquet"
+        if h5.exists():
+            src = h5
+        elif pq.exists():
+            src = pq
+        else:
+            logger.warning(f"因子文件不存在: {h5} 或 {pq}")
             return None
         try:
-            df = pd.read_hdf(h5, key="data")
+            if src.suffix == ".h5":
+                df = pd.read_hdf(src, key="data")
+            else:
+                df = pd.read_parquet(src)
             fname = df.columns[0]
             s = df[fname].copy()
             s = self._normalize_index(s)

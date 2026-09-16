@@ -150,17 +150,29 @@ def synthesize_daily_composite(
         return pd.DataFrame()
 
     if date is None:
-        date = max(
-            s.index.get_level_values("datetime").max()
-            for s in factor_data.values()
-        )
+        # 自动选择数据最完整的日期：取所有因子都有数据的最新日期
+        all_dates = []
+        for s in factor_data.values():
+            s_sorted = s.sort_index()
+            nonnull_dates = s_sorted.dropna().index.get_level_values("datetime").unique()
+            all_dates.append(set(nonnull_dates))
+        if all_dates:
+            common_dates = all_dates[0]
+            for d in all_dates[1:]:
+                common_dates = common_dates & d
+            date = max(common_dates) if common_dates else max(s.index.get_level_values("datetime").max() for s in factor_data.values())
+        else:
+            date = max(s.index.get_level_values("datetime").max() for s in factor_data.values())
+    # 确保 date 是 Timestamp 类型，避免类型不匹配
+    date = pd.Timestamp(date)
     logger.info("合成综合得分，交易日: %s", date.strftime('%Y-%m-%d'))
 
     # 提取目标日期的因子截面
     day_series = {}
     for fid, s in factor_data.items():
-        mask = s.index.get_level_values("datetime") == date
-        vals = s[mask].dropna()
+        s_sorted = s.sort_index()
+        mask = s_sorted.index.get_level_values("datetime") == date
+        vals = s_sorted[mask].dropna()
         if len(vals) > 0:
             day_series[fid] = vals
 

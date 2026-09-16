@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-09-12 22:08:56",
-  "duration_s": 1573.2920382022858,
-  "ic_factors": 56,
-  "backtest_return": 0,
+  "timestamp": "2026-09-16 09:58:55",
+  "duration_s": 2.868898868560791,
+  "ic_factors": 0,
+  "backtest_return": -90.29162547532398,
   "sharpe_ratio": 0,
   "max_drawdown": 0
 }

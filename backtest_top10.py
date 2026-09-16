@@ -73,7 +73,7 @@ def main():
     # 步骤2: 加载因子得分
     logger.info("\n📂 步骤2: 加载因子得分...")
     factor_ids = sorted([d.name for d in cfg.RDAGENT_WORKSPACE.iterdir()
-                         if d.is_dir() and (d / "result.h5").exists()])
+                         if d.is_dir() and ((d / "result.h5").exists() or (d / "result.parquet").exists())])
     logger.info(f"  加载 {len(factor_ids)} 个因子...")
     scores_dict = factor_engine.load_factors(factor_ids)
     # 合并为 DataFrame
@@ -95,7 +95,11 @@ def main():
     logger.info(perf_analyzer.generate_report(metrics))
 
     # 保存结果
-    df = pd.DataFrame(daily_value).dropna(subset=['value']).set_index('date').sort_index()
+    df = pd.DataFrame(daily_value)
+    if df.empty or 'value' not in df.columns:
+        logger.warning("回测结果为空，跳过保存")
+        return
+    df = df.dropna(subset=['value']).set_index('date').sort_index()
     metrics.final_nav = df['value'].iloc[-1] / INITIAL_CAPITAL
     metrics.nav_curve = df[['value']].copy()
     metrics.nav_curve.to_csv("backtest_nav.csv")
@@ -146,18 +150,26 @@ def main():
 def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
     """
     运行回测（兼容原接口）
-    
+
     Args:
         prices: 价格 DataFrame
         scores: 因子得分 DataFrame
         engine: BacktestEngine 实例
         top_k: 每次选股数量
         hold_days: 持有天数
-    
+
     Returns:
         (daily_value, trade_log)
     """
-    all_dates = sorted(scores.index.get_level_values("datetime").drop_duplicates())
+    # 兼容 MultiIndex 和普通 DataFrame
+    if hasattr(scores, 'index') and scores.index.names == ['datetime', 'instrument']:
+        all_dates = sorted(scores.index.get_level_values("datetime").drop_duplicates())
+    elif 'datetime' in scores.columns:
+        all_dates = sorted(scores['datetime'].dropna().unique())
+        scores = scores.set_index(['datetime', 'instrument']) if 'instrument' in scores.columns else scores
+    else:
+        logger.warning("无法获取 dates，回测跳过")
+        return [], []
     all_dates = [d for d in all_dates if not pd.isna(d)]
 
     # 避免在拆分日执行交易
@@ -179,7 +191,10 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
     signals = {}
     for i, date in enumerate(all_dates):
         try:
-            day_scores = scores.xs(date, level="datetime")
+            if hasattr(scores, 'index') and scores.index.names == ['datetime', 'instrument']:
+                day_scores = scores.xs(date, level="datetime")
+            else:
+                day_scores = scores[scores.get('datetime', date) == date] if 'datetime' in scores.columns else scores
             day_scores = day_scores.dropna()
             if len(day_scores) >= top_k:
                 # 使用 engine 统一合成：横截面 Z-score + 等权

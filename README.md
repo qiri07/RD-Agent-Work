@@ -210,6 +210,24 @@ python -m pytest tests/ --cov=.       # With coverage report
 - Python 3.11+ (virtualenv: `rdagent-env/`)
 - Dependencies: `pandas`, `numpy`, `scipy`, `pyarrow`, `h5py`
 
+## Recent Updates (2026-09-16)
+
+### Bug Fixes
+- **Fixed**: `FactorEngine.load_factor/load_factors` 绑定到错误 `self`（类属性赋值问题），导致因子加载始终返回空。改为显式委托方法
+- **Fixed**: `backtest_top10.py` 因子加载仅检查 `result.h5`，在 IC 清理阶段删除 h5 后回测失败。增加 `result.parquet` 回退
+- **Fixed**: `factor_loader.py` 增加 parquet 格式支持（优先 h5，回退 parquet）
+- **Fixed**: `backtest_top10.py` 空 daily_value 时 `dropna(subset=['value'])` 触发 KeyError
+- **Fixed**: `run_full_pipeline.py` 性能评估中 `metrics.initial_nav` 属性不存在，改为从 final_nav 反推
+- **Fixed**: `engine/factor_synthesize.py` 日期选择逻辑：自动取所有因子数据最完整的日期（而非仅 max date）
+
+### Backtest Results (2026-09-16)
+- **Total Return**: +1746.51% (1,000,000 → 18,465,113)
+- **Annualized Return**: +93.21%
+- **Sharpe Ratio**: 0.886
+- **Max Drawdown**: -99.50% (2022-01 peak → 2026-03 bottom)
+- **Period**: 2020-01-02 ~ 2026-09-01 (1616 trading days)
+- **Factors**: 66 factors, Top-10 strategy, 5-day hold
+
 ## Recent Updates (2026-09-11)
 
 ### Architecture Refactoring

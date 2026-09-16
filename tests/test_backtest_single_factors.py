@@ -48,7 +48,7 @@ class TestLoadAllFactors(unittest.TestCase):
             self._create_factor_h5(tmpdir, "factor_a", n_days=30, n_stocks=10)
             self._create_factor_h5(tmpdir, "factor_b", n_days=30, n_stocks=10)
 
-            with mock.patch.object(factor_engine, 'workspace', Path(tmpdir)):
+            with mock.patch.object(factor_engine._loader, 'workspace', Path(tmpdir)):
                 factors = factor_engine.load_factors(["factor_a", "factor_b"])
 
             self.assertEqual(len(factors), 2)
@@ -62,7 +62,7 @@ class TestLoadAllFactors(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             self._create_factor_h5(tmpdir, "only_factor", n_days=30, n_stocks=10)
 
-            with mock.patch.object(factor_engine, 'workspace', Path(tmpdir)):
+            with mock.patch.object(factor_engine._loader, 'workspace', Path(tmpdir)):
                 factors = factor_engine.load_factors(["only_factor"])
 
             self.assertEqual(len(factors), 1)
@@ -76,7 +76,7 @@ class TestLoadAllFactors(unittest.TestCase):
             # 只创建目录，不创建H5文件
             Path(tmpdir, "empty_factor").mkdir()
 
-            with mock.patch.object(factor_engine, 'workspace', Path(tmpdir)):
+            with mock.patch.object(factor_engine._loader, 'workspace', Path(tmpdir)):
                 factors = factor_engine.load_factors(["empty_factor"])
 
             self.assertEqual(len(factors), 0)

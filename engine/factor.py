@@ -34,8 +34,12 @@ class FactorEngine:
         self._loader = FactorLoader(workspace)
 
     # ── 加载 ──────────────────────────────────────────────
-    load_factor = FactorLoader.load_factor
-    load_factors = FactorLoader.load_factors
+    def load_factor(self, factor_id: str):
+        return self._loader.load_factor(factor_id)
+
+    def load_factors(self, factor_ids):
+        return self._loader.load_factors(factor_ids)
+
     _normalize_index = staticmethod(FactorLoader._normalize_index)
 
     # ── IC 计算 ───────────────────────────────────────────

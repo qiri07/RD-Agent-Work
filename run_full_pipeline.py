@@ -141,7 +141,7 @@ def phase_performance_evaluation(backtest_metrics: dict) -> dict:
     metrics = analyzer.analyze(daily_value, trades)
     
     log(f"\n  📊 绩效指标:")
-    log(f"     初始净值: {metrics.initial_nav:.4f}")
+    log(f"     初始净值: {metrics.final_nav / (1 + metrics.total_return_pct/100):.4f}" if metrics.total_return_pct else f"     初始净值: 1.0000")
     log(f"     最终净值: {metrics.final_nav:.4f}")
     log(f"     总收益率: {metrics.total_return_pct:+.2f}%")
     log(f"     年化收益率: {metrics.annual_return_pct:+.2f}%")

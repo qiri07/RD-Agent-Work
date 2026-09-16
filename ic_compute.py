@@ -145,8 +145,7 @@ def compute_top10(factor_chunks: dict, returns_chunks: dict) -> dict:
 
 def compute_ic_session(h5: Path, ret_lookup: dict) -> tuple:
     """
-    对单个因子 session 计算 IC，返回 (factor_id, {date: ic})
-    与 run_ic_fast.py 中的同名函数完全一致
+    对单个因子 session 计算 IC（向量化版本），返回 (factor_id, {date: ic})
     """
     try:
         df = pd.read_hdf(h5, key="data")
@@ -157,20 +156,28 @@ def compute_ic_session(h5: Path, ret_lookup: dict) -> tuple:
     s = df[col].copy()
     if s.index.names[0] != "datetime":
         s.index = s.index.set_names(["datetime", "instrument"])
-    s = s.reset_index()
-    s.columns = ["datetime", "instrument", "factor_val"]
+    # 转为 DataFrame
+    factor_df = s.reset_index().rename(columns={0: 'factor_val'})
+    factor_df.columns = ['datetime', 'instrument', 'factor_val']
     factor_id = h5.parent.name
 
-    dates = s["datetime"].unique()
+    # 将 ret_lookup 转为 Series，便于向量化查找
+    tuples = list(ret_lookup.keys())
+    vals = np.array(list(ret_lookup.values()), dtype=np.float64)
+    ret_series = pd.Series(vals, index=pd.MultiIndex.from_tuples(tuples, names=['datetime', 'instrument']))
+
+    # merge 获取 returns
+    merged = factor_df.merge(ret_series.to_frame('ret_5d'), on=['datetime', 'instrument'], how='inner')
+    merged['factor_val'] = merged['factor_val'].astype(np.float64)
+    merged['ret_5d'] = merged['ret_5d'].astype(np.float64)
+
+    # 按日期分组计算 Spearman IC
     ic_by_date = {}
-    for date in dates:
-        day = s[s["datetime"] == date]
-        vals = day["factor_val"].values.astype(np.float64)
-        keys = list(zip(day["datetime"], day["instrument"]))
-        rets = np.array([ret_lookup.get(k, np.nan) for k in keys], dtype=np.float64)
-        mask = ~(np.isnan(vals) | np.isnan(rets))
-        f = vals[mask]
-        r = rets[mask]
+    for date, group in merged.groupby('datetime'):
+        f = group['factor_val'].values
+        r = group['ret_5d'].values
+        mask = ~(np.isnan(f) | np.isnan(r))
+        f, r = f[mask], r[mask]
         if len(f) < 50:
             continue
         rf = rankdata(f)
