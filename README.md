@@ -167,7 +167,7 @@ python -m pytest tests/ -q            # Quiet mode
 python -m pytest tests/ --cov=.       # With coverage report
 ```
 
-**Current test coverage: 487 tests, 100% pass rate**
+**Current test coverage: 679 tests, 100% pass rate**
 
 | Test File | Tests | Coverage |
 |-----------|-------|----------|
@@ -195,6 +195,7 @@ python -m pytest tests/ --cov=.       # With coverage report
 | `test_ic_compute_detail.py` | 14 | 100% |
 | `test_ic_scan_engine.py` | 13 | 100% |
 | `test_recompute_engine.py` | 13 | 100% |
+| `test_whitelist_backtest.py` | (whitelist_backtest.py) | ✅ 全量通过 |
 
 ## Data
 
@@ -209,6 +210,20 @@ python -m pytest tests/ --cov=.       # With coverage report
 
 - Python 3.11+ (virtualenv: `rdagent-env/`)
 - Dependencies: `pandas`, `numpy`, `scipy`, `pyarrow`, `h5py`
+
+## Recent Updates (2026-09-17)
+
+### New: Whitelist Backtest
+- **Added**: `whitelist_backtest.py` — 白名单股票因子分析与回测
+  - 支持指定 30 只 A 股白名单进行独立因子计算、IC 分析、多因子回测
+  - 9 个技术因子（动量/反转/波动率/RSI/MACD/布林带/成交量比率）
+  - 横截面 Z-score + 等权合成，Top-10 选股，5 日持有周期
+  - 回测结果：188.55% 总收益，年化 17.12%，最大回撤 -40.97%
+- **Added**: `WHITELIST_BACKTEST_REPORT.md` — 完整分析报告
+
+### Bug Fixes
+- **Fixed**: `select_top10.py` 重复的 `h5.exists()` 检查（两行相同判断），改为与 `factor_loader.py` 一致的 h5/parquet 双格式回退
+- **Fixed**: `engine/ic_scan/analysis.py` 移除未使用的 `daily_ic_tmp = None` 残留变量
 
 ## Recent Updates (2026-09-16)
 

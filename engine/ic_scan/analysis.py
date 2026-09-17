@@ -43,7 +43,6 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
         row = {"factor_id": factor_id, "valid_rows": len(factor_valid)}
 
         for fd in IC_FORWARD_DAYS:
-            daily_ic_tmp = None
             fwd_return = returns_df.groupby("instrument")["$close"].pct_change(fd).shift(-fd)
             common_idx = factor_valid.index.intersection(fwd_return.dropna().index)
             if len(common_idx) < 1000:

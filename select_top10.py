@@ -49,15 +49,16 @@ def load_factors(factor_ids):
     factor_data = {}
     for fid in factor_ids:
         h5 = WS / fid / "result.h5"
-        if not h5.exists():
-            logger.warning("跳过: %s (无h5)", fid[:20])
+        pq = WS / fid / "result.parquet"
+        src = h5 if h5.exists() else (pq if pq.exists() else None)
+        if src is None:
+            logger.warning("跳过: %s (无h5/parquet)", fid[:20])
             continue
         try:
-            h5 = WS / fid / "result.h5"
-            if not h5.exists():
-                logger.warning("跳过: %s (无h5)", fid[:20])
-                continue
-            df = pd.read_hdf(h5, key="data")
+            if src.suffix == ".h5":
+                df = pd.read_hdf(src, key="data")
+            else:
+                df = pd.read_parquet(src)
             # 处理 DataFrame 或 Series
             if isinstance(df, pd.DataFrame):
                 col = df.columns[0]
