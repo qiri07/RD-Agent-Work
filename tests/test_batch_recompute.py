@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 batch_recompute_factors.py / parallel_recompute_factors.py 单元测试
 ===================================================================

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 数据去重脚本 — 修复 daily_pv_full.parquet 中的重复行问题
 =========================================================

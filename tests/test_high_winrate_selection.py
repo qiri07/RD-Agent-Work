@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 high_winrate_stock_selection.py (v3-v6) 单元测试
 =================================================

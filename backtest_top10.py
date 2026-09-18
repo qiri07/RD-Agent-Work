@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子选股策略回测 v2 — 全量复权价格
 ===================================

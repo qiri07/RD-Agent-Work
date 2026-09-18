@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 项目配置模块 — 统一管理路径、密钥、魔法数字
 ============================================

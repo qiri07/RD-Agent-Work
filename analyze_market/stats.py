@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 统计与IC计算模块（numpy向量化版）
 ==================================

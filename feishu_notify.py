@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 """
 飞书通知模块 — 通过 Webhook 推送因子分析和选股结果
 支持本地 CLI 调用方式，兼容环境变量配置

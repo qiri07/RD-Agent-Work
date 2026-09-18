@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 高胜率因子选股策略 v2 — 稳健版
 - 过滤北交所，只选沪深主板+创业板+科创板

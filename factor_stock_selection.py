@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 RD-Agent 因子选股完整指南
 ========================================

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Run all 11 fixed factors and convert to HDF5.
 Reads from parquet, writes to both parquet and hdf5.

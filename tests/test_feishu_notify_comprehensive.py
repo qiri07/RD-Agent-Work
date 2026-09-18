@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 feishu_notify.py 单元测试
 ==========================

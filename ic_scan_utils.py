@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子 IC 扫描工具模块
 ====================
@@ -252,19 +253,19 @@ def archive_traces(trace_dir: str = "./git_ignore_folder/RD-Agent_workspace/trac
     archived = 0
     saved = 0
 
-    for fpath in glob.glob(os.path.join(trace_dir, "**", "*.json"), recursive=True):
+    for fpath in glob.glob(str(Path(trace_dir) / "**" / "*.json"), recursive=True):
         if os.path.getmtime(fpath) < threshold_ts:
             sz = os.path.getsize(fpath)
             if compress:
-                gz_path = fpath + ".gz"
-                with open(fpath, "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+                gz_path = str(fpath) + ".gz"
+                with open(str(fpath), "rb") as f_in, gzip.open(gz_path, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
-                os.remove(fpath)
+                os.remove(str(fpath))
                 saved += sz - os.path.getsize(gz_path)
             else:
-                dest = os.path.join(trace_dir + "_archive", os.path.basename(fpath))
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-                shutil.move(fpath, dest)
+                dest = Path(trace_dir) / "_archive" / os.path.basename(str(fpath))
+                os.makedirs(str(dest.parent), exist_ok=True)
+                shutil.move(str(fpath), str(dest))
                 saved += sz
             archived += 1
 
@@ -283,13 +284,13 @@ def scan_sizes(root: str = "./git_ignore_folder/RD-Agent_workspace",
     rows = []
     for dirpath, _, files in os.walk(root):
         for f in files:
-            p = os.path.join(dirpath, f)
+            p = Path(dirpath, f)
             try:
                 size = os.path.getsize(p)
             except OSError:
                 continue
             if size >= min_mb * 1024 * 1024:
-                rows.append((size, p))
+                rows.append((size, str(p)))
     rows.sort(reverse=True)
     print(f"{'size_MB':>10}  {'size_GB':>8}  path")
     for size, p in rows[:topn]:

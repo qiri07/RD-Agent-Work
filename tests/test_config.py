@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 config.py 单元测试 — 不使用 pytest，用 unittest 兼容
 """

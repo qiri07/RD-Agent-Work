@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 并行化因子重算 — 多进程同时计算多个因子
 =========================================

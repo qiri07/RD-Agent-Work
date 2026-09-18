@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 全市场股票批量分析 v4 — 纯numpy高效版
 ======================================

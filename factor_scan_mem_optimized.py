@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子 IC 扫描 入口脚本
 ======================

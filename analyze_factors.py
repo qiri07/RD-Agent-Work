@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 RD-Agent 因子使用分析工具
 用于分析和管理 RD-Agent 生成的量化因子
@@ -80,7 +81,8 @@ class FactorAnalyzer:
                         if 'factor.name = ' in line:
                             return line.split("'")[1]
                 return "Unknown"
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
             return "Unknown"
     
     def analyze_factor_quality(self):

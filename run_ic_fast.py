@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 高性能 IC 分析 v5 — 分 session 逐因子处理，避免 OOM
 核心思路：逐个 session 加载因子，与预计算的返回字典计算 IC

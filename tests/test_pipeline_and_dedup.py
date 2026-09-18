@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 run_pipeline.py / deduplicate_source_data.py / run_ic_fast.py 单元测试
 ======================================================================

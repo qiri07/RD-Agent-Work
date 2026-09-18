@@ -59,7 +59,8 @@ def copy_data_to_session(session: Path) -> bool:
             try:
                 df_pq = pd.read_parquet(dst_pq)
                 df_pq.to_hdf(dst_h5, key="data", mode="w", format="table")
-            except Exception:
+            except Exception as e:
+                logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                 pass  # h5生成失败不影响使用，因子代码会读parquet
             # 清掉旧的执行锁
             lock = session / "execution.lock"
@@ -144,7 +145,8 @@ def main():
                 if h5.exists():
                     try:
                         old_stocks = pd.read_hdf(h5, key="data").index.get_level_values("instrument").nunique()
-                    except Exception:
+                    except Exception as e:
+                        logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                         old_stocks = "损坏"
                 print(f"  [dry] {s.name}: {old_stocks} 只 → 5,553 只")
                 updated += 1

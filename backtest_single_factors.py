@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 单因子回测扫描 v4 — 每个因子独立按日选 Top-K，找出胜率 Top 3
 ============================================================

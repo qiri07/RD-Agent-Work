@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Run all 13 fixed factors and convert to HDF5."""
 import os
 import pandas as pd

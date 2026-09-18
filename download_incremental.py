@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 增量下载最近缺失的交易日数据（只下载最近几天，快很多）
 从 daily_pv_full.parquet 已有的最新日期开始，补全到今天。
@@ -92,7 +93,9 @@ def main():
                         "$factor": 1.0,
                     })
                     count += 1
-                except Exception:
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                     pass
         except Exception as e:
             pass  # 跳过异常股票

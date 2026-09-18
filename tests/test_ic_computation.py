@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 IC 计算逻辑单元测试 — 使用 unittest
 """

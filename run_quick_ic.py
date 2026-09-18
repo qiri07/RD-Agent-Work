@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 快速IC分析 - 处理已重算的66个因子
 使用numpy加速，避免pandas性能瓶颈

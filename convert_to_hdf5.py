@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Convert all parquet factor results to HDF5 format.
 Requires h5py or pytables (tables) to be installed.

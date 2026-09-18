@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子重算 + IC分析 入口脚本
 ===========================

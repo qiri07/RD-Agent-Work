@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 新数据上重新运行所有因子 + IC 分析 入口脚本
 ==============================================

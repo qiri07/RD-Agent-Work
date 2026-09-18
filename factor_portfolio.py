@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子组合与回测工具
 将多个因子组合用于量化回测

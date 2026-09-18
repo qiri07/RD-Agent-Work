@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 下载完整 A 股全量日线数据（来自 baostock）
 支持断点续传，输出 parquet + hdf5 格式
@@ -142,7 +143,9 @@ def main():
                         "$factor": 1.0,
                     })
                     count += 1
-                except Exception:
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                     pass
         except Exception as e:
             print(f"  {code} error: {e}")

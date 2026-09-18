@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 IC 报告打印与完整流程编排模块
 ===============================

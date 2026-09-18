@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 将 trade-krono-cli 缓存的 K 线数据转换为 RD-Agent daily_pv 格式。
 同时合并已有数据（保留更早的历史），覆盖输出到两个位置：

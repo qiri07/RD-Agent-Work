@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 实际因子使用示例
 演示如何在量化策略中使用 RD-Agent 生成的因子
@@ -244,7 +245,8 @@ def save_factor_data():
                 factor_data = pd.read_hdf(result_file, key='data')
                 factor_name = factor_data.columns[0]
                 all_factors[factor_name] = factor_data[factor_name]
-            except Exception:
+            except Exception as e:
+                logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                 continue
     
     # 保存所有因子

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 全量股票回测 — 找出 Top N 收益最高的股票
 ===========================================

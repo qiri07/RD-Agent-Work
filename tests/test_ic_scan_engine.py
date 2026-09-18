@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 engine/ic_scan.py 单元测试
 ==========================

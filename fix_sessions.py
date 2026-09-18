@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 批量修复：重新生成 h5 + 重算因子
 """

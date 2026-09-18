@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 engine/ic_scan 包公共 API
 ==========================

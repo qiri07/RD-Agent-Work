@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 31只标的因子分析与回测 — 精简高效版
 =====================================
@@ -7,7 +8,6 @@
 import logging
 import pandas as pd
 import numpy as np
-from pathlib import Path
 import warnings, time
 warnings.filterwarnings('ignore')
 
@@ -226,7 +226,8 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
                 vals = fdf.loc[:, code]
                 vals = vals[np.isfinite(vals)].ffill().fillna(0)
                 stock_factor_matrix[fid][si] = vals
-            except Exception:
+            except Exception as e:
+                logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                 stock_factor_matrix[fid][si] = None
 
     composite_scores = {}
@@ -241,7 +242,9 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
                         v = stock_factor_matrix[fid][si].loc[d]
                         if np.isfinite(v):
                             vals.append(v)
-                    except Exception:
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                         pass
             if vals:
                 scores[si] = np.mean(vals)
@@ -293,7 +296,8 @@ def analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, hold_days
                     p2 = next((e[1] for e in stock_date_idx[si] if e[0] == fwd_d[0]), None)
                     if p1 and p1 > 0 and p2 and p2 > 0:
                         frvals[si] = (p2 / p1 - 1) * 100
-                except Exception:
+                except Exception as e:
+                    logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
                     continue
             if len(fvals) < 5 or len(frvals) < 5:
                 continue

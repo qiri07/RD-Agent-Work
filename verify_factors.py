@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Verify all factor results and convert parquet to hdf5.
 Usage: python3 verify_factors.py [--convert]
@@ -21,7 +22,9 @@ def read_result(session_dir: Path):
     if h5.exists():
         try:
             return pd.read_hdf(h5, key='data'), 'h5'
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
             pass
     if pq.exists():
         return pd.read_parquet(pq), 'parquet'

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 factor_rule_corrector.py 单元测试
 ===================================

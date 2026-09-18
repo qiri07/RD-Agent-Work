@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 IC 数据加载与一致性验证模块
 =============================

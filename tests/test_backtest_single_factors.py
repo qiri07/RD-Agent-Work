@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 backtest_single_factors.py 单元测试 (重构后)
 =============================================

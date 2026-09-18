@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Download fresh A-share daily data from baostock and save as parquet.
 Usage: python3 download_astock_data.py [num_stocks] [start_date] [end_date]

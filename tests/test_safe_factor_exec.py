@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 engine/safe_factor_exec.py 测试
 """

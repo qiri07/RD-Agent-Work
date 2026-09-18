@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 import socket
 import sys
 import threading
@@ -11,7 +12,9 @@ def forward(src, dst):
             if not data:
                 break
             dst.sendall(data)
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
         pass
     finally:
         src.close()

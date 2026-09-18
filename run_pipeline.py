@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 因子分析 + 选股 + 飞书推送 一体化脚本
 =====================================

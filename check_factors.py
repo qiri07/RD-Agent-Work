@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 Check specific factor sessions for data quality issues.
 Usage: python3 check_factors.py
@@ -35,7 +36,7 @@ def main():
 
     print("=== Problematic Sessions (11) ===")
     for s in problematic:
-        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        h5 = Path(WORKSPACE, s, "result.h5")
         if os.path.exists(h5):
             df = pd.read_hdf(h5, key='data')
             rows = len(df)
@@ -47,7 +48,7 @@ def main():
 
     print("\n=== Duplicate Check Session ===")
     for s in dup_sessions:
-        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        h5 = Path(WORKSPACE, s, "result.h5")
         if os.path.exists(h5):
             df = pd.read_hdf(h5, key='data')
             rows = len(df)
@@ -59,7 +60,7 @@ def main():
     print("\n=== Full Scan: Sessions not at 8,392,254 rows ===")
     target = 8392254
     for s in sessions:
-        h5 = os.path.join(WORKSPACE, s, 'result.h5')
+        h5 = Path(WORKSPACE, s, "result.h5")
         if not os.path.exists(h5):
             print(f"{s}: NO result.h5")
             continue

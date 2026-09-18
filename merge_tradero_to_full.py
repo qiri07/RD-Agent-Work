@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 合并 trade-krono-cli 最新数据到 daily_pv_full。
 
