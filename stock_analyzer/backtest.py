@@ -59,6 +59,9 @@ def run_bt(stock_df, factor_df, factor_col, strategy, params=None):
         on=['date', 'instrument'], how='inner'
     ).set_index(['date', 'instrument']).sort_index()
 
+    if mrg.empty:
+        return bt
+
     dates = sorted(stock_df.index.get_level_values(0).unique())
     for i, dt in enumerate(dates):
         row = mrg.loc[dt]

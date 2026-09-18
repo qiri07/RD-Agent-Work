@@ -111,6 +111,7 @@ def save_ranking(ticker: str, dates, workspace, out_dir: Path):
     ranking_records = []
     for dt in sorted(dates.unique())[-30:]:
         row = {'date': dt.date()}
+        has_factor = False
         for fid, fs in all_factor_data.items():
             try:
                 val = fs.loc[(dt, ticker)]
@@ -119,11 +120,13 @@ def save_ranking(ticker: str, dates, workspace, out_dir: Path):
                 day_vals = fs.xs(dt, level=0, drop_level=False)
                 if len(day_vals) < 50:
                     continue
-                rank = day_vals.rank(pct=True).loc[ticker]
+                rank = day_vals.rank(pct=True).loc[(dt, ticker)]
                 row[fid[:12]] = f"{val:.4f} ({rank*100:.1f}%)"
+                has_factor = True
             except (KeyError, TypeError):
                 continue
-        ranking_records.append(row)
+        if has_factor:
+            ranking_records.append(row)
 
     if ranking_records:
         rd = pd.DataFrame(ranking_records)

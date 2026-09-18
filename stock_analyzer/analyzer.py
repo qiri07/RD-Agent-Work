@@ -86,6 +86,8 @@ def compute_stats(daily_ret: pd.Series) -> dict:
     Returns:
         dict with ann_ret, ann_vol, sharpe, max_dd
     """
+    if len(daily_ret) == 0:
+        return {"ann_ret": 0.0, "ann_vol": 0.0, "sharpe": 0.0, "max_dd": 0.0}
     ann_ret = (1 + daily_ret).prod() ** (252 / len(daily_ret)) - 1
     ann_vol = daily_ret.std() * np.sqrt(252)
     sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
