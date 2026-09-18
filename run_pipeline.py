@@ -90,6 +90,8 @@ def screen_stocks(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
                 s = df.copy()
             if s.index.names[0] != "datetime":
                 s.index = s.index.set_names(["datetime", "instrument"])
+            # 去重：防止 non-unique multi-index 导致 DataFrame 构建失败
+            s = s[~s.index.duplicated(keep='first')]
             s = s.reset_index()
             s.columns = ["datetime", "instrument", "factor_val"]
             factor_dict[fid] = s

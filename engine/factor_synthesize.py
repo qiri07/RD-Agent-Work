@@ -182,9 +182,11 @@ def synthesize_daily_composite(
 
     logger.info("参与合成的因子数: %d，股票数: %d", len(day_series), len(next(iter(day_series.values()))))
 
-    # 横截面 Z-score 标准化
+    # 去重：处理可能的重复行（防止 non-unique multi-index 报错）
     df = pd.DataFrame(day_series)
     df = df.reset_index()
+    df = df.drop_duplicates(subset=["datetime", "instrument"])
+
     instrument_col = "instrument"
     for col in df.columns:
         if col not in (instrument_col, "datetime"):
