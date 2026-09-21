@@ -33,6 +33,12 @@ class PriceEngine:
         df.index.names = ['datetime', 'instrument']
         df = df.sort_index()
         df = df[~df.index.duplicated(keep='first')]
+        # 过滤无效价格（负价格、零价格）
+        valid_mask = (df['$open'] > 0) & (df['$close'] > 0)
+        invalid_count = (~valid_mask).sum()
+        if invalid_count > 0:
+            logger.warning(f"过滤 {invalid_count} 条无效价格记录（负值或零值）")
+            df = df[valid_mask]
         return df
 
     def compute_adjusted_prices(self, df: Optional[pd.DataFrame] = None) -> Tuple[pd.DataFrame, List[str]]:
