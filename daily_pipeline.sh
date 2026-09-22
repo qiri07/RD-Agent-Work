@@ -31,10 +31,12 @@ TOTAL_START=$(date +%s)
 log "\n📥 步骤 1/5: 增量下载今日数据..."
 STEP1_START=$(date +%s)
 
-if [ -f "download_full_astock.py" ]; then
+if [ -f "download_incremental.py" ]; then
+    python3 download_incremental.py 2>&1 | tee -a "$LOG_FILE"
+elif [ -f "download_full_astock.py" ]; then
     python3 download_full_astock.py 2>&1 | tee -a "$LOG_FILE"
 else
-    log "  ⚠️  download_full_astock.py 不存在，跳过下载"
+    log "  ⚠️  download_incremental.py 不存在，跳过下载"
 fi
 
 STEP1_END=$(date +%s)
