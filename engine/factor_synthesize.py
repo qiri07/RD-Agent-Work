@@ -12,6 +12,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 import config as cfg
+from .factor_loader import FactorLoader
 from .factor_ic import compute_ic_time_series
 
 logger = logging.getLogger(__name__)

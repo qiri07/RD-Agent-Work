@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 31只标的因子分析与回测 — 精简高效版
 =====================================
 架构：使用 engine/ 模块
 """
 import logging
-import pandas as pd
+import time
+import warnings
+
 import numpy as np
-import warnings, time
+import pandas as pd
+
 warnings.filterwarnings('ignore')
 
 import config as cfg
+from engine.backtest import create_backtest_engine
+from engine.factor import create_factor_engine
+from engine.metrics import create_performance_analyzer
 from engine.pricing import PriceEngine
-from engine.backtest import BacktestEngine, create_backtest_engine
-from engine.factor import FactorEngine, create_factor_engine
-from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +94,11 @@ def main():
     pv, split_stocks = price_engine.compute_adjusted_prices(pv)
     logger.info("  复权调整: %d 只股票发生拆分", len(split_stocks))
 
-    prices = pv[['$open', '$close']].to_numpy()
     date_idx = pv.index.get_level_values('datetime').unique()
     date_map = {d: i for i, d in enumerate(sorted(date_idx))}
     valid_dates = [d for d in date_map if d < SPLIT_CURR]
-    VDATES = [date_map[d] for d in valid_dates]
     logger.info("  %d行 loaded in %.1fs, %d trading days", len(pv), time.time()-t1, len(valid_dates))
 
-    # 构建快速查找
-    inst_to_idx = {code: i for i, code in enumerate(CODES)}
     stock_date_idx = {}
     for si, code in enumerate(CODES):
         rows = pv.xs(code, level=1)[['$open', '$close']]
@@ -173,7 +173,7 @@ def print_analyze_individual_performance(stock_date_idx, TARGET, valid_dates, CO
         yrs = days / 365.25
         ann = ((last_close / first_close) ** (1/max(yrs,0.01)) - 1) * 100 if yrs > 0 else ret
         cum = np.array([e[1] for e in entries]) / first_close
-        dd = ((cum / np.maximum.accumulate(cum) - 1)).min() * 100
+        dd = (cum / np.maximum.accumulate(cum) - 1).min() * 100
         perf.append({
             'code': code, 'name': TARGET[code],
             'return': round(ret, 2), 'ann_return': round(ann, 2),
@@ -195,13 +195,14 @@ def run_equal_weight_hold(valid_dates, stock_date_idx, CODES, engine):
     """运行等权买入持有策略"""
     stock_first = {}
     for si, code in enumerate(CODES):
-        if si in stock_date_idx and stock_date_idx[si]:
+        if stock_date_idx.get(si):
             stock_first[si] = stock_date_idx[si][0][0]
     if not stock_first:
         logger.warning("无有效数据")
         return {'daily_value': [], 'trades': []}
 
-    start_idx = max(stock_first.values())
+    # 确定起始索引
+    _ = max(stock_first.values())
 
     price_map = {}
     for si, code in enumerate(CODES):
@@ -226,8 +227,8 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
                 vals = fdf.loc[:, code]
                 vals = vals[np.isfinite(vals)].ffill().fillna(0)
                 stock_factor_matrix[fid][si] = vals
-            except Exception as e:
-                logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
+            except Exception:
+                logger.exception("Unhandled exception")
                 stock_factor_matrix[fid][si] = None
 
     composite_scores = {}
@@ -242,10 +243,8 @@ def run_factor_rotation(valid_dates, stock_date_idx, CODES, factor_data, engine)
                         v = stock_factor_matrix[fid][si].loc[d]
                         if np.isfinite(v):
                             vals.append(v)
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
-                        pass
+                    except Exception:
+                        logger.exception("Unhandled exception")
             if vals:
                 scores[si] = np.mean(vals)
         if scores:
@@ -296,8 +295,8 @@ def analyze_factor_ic(factor_data, stock_date_idx, CODES, valid_dates, hold_days
                     p2 = next((e[1] for e in stock_date_idx[si] if e[0] == fwd_d[0]), None)
                     if p1 and p1 > 0 and p2 and p2 > 0:
                         frvals[si] = (p2 / p1 - 1) * 100
-                except Exception as e:
-                    logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
+                except Exception:
+                    logger.exception("Unhandled exception")
                     continue
             if len(fvals) < 5 or len(frvals) < 5:
                 continue

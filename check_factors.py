@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 Check specific factor sessions for data quality issues.
 Usage: python3 check_factors.py
 """
-import pandas as pd
 import os
+from pathlib import Path
+
+import pandas as pd
 
 import config as cfg
+
 WORKSPACE = cfg.RDAGENT_WORKSPACE
 
 # Problematic sessions from summary
@@ -70,7 +74,7 @@ def main():
             stocks = df.index.get_level_values('instrument').nunique()
             if rows != target:
                 print(f"{s}: {rows:,} rows, {stocks} stocks")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"{s}: ERROR - {e}")
 
 

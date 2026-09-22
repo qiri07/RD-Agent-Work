@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 完整因子分析流水线
 ==================
@@ -12,6 +13,7 @@ from __future__ import annotations
     python3 run_full_pipeline.py --dry-run          # 只检查不执行
 """
 import argparse
+import json
 import logging
 import subprocess
 import sys
@@ -37,7 +39,7 @@ def log(msg: str):
     logger.info(msg)
 
 
-def phase_recompute_factors(dry_run: bool = False, data_freshness: dict = None) -> bool:
+def phase_recompute_factors(dry_run: bool = False, data_freshness: dict | None = None) -> bool:
     """Phase 1: 因子重算"""
     log("\n" + "=" * 70)
     log("  Phase 1: 因子重算")
@@ -55,11 +57,13 @@ def phase_recompute_factors(dry_run: bool = False, data_freshness: dict = None) 
         return True
 
     cmd = [sys.executable, "batch_recompute_factors.py", "--phase2"]
-    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT))
-    return result.returncode == 0
+    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT), check=False)
+    if result.returncode != 0:
+        log(f"  ⚠️ 因子重算子进程返回码: {result.returncode}")
+    return True
 
 
-def phase_ic_analysis(feishu_url: str = None, data_freshness: dict = None) -> pd.DataFrame:
+def phase_ic_analysis(feishu_url: str | None = None, data_freshness: dict | None = None) -> pd.DataFrame:
     """Phase 2: IC 分析"""
     log("\n" + "=" * 70)
     log("  Phase 2: IC 分析")
@@ -75,10 +79,10 @@ def phase_ic_analysis(feishu_url: str = None, data_freshness: dict = None) -> pd
     cmd = [sys.executable, "run_ic_fast.py"]
     if feishu_url:
         cmd.extend(["--feishu-url", feishu_url])
-    
-    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT))
-    
-    # 读取 IC 结果
+
+    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT), check=False)
+    if result.returncode != 0:
+        log(f"  ⚠️ IC分析子进程返回码: {result.returncode}")
     ic_csv = cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
     if ic_csv.exists():
         return pd.read_csv(ic_csv)
@@ -92,8 +96,10 @@ def phase_stock_selection(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     log("=" * 70)
     
     cmd = [sys.executable, "run_pipeline.py", "--stocks-only", "--top-n", str(top_n)]
-    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT))
-    
+    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT), check=False)
+    if result.returncode != 0:
+        log(f"  ⚠️ 选股子进程返回码: {result.returncode}")
+
     # 读取选股结果
     stocks_csv = cfg.PROJECT_ROOT / "top10_stocks_new.csv"
     if stocks_csv.exists():
@@ -101,19 +107,30 @@ def phase_stock_selection(ic_df: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
     return pd.DataFrame()
 
 
-def phase_backtest() -> dict:
+def phase_backtest(whitelist: list | None = None) -> dict:
     """Phase 4: 回测"""
     log("\n" + "=" * 70)
     log("  Phase 4: 回测")
     log("=" * 70)
-    
-    cmd = [sys.executable, "backtest_top10.py"]
-    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT))
-    
+
+    if whitelist and cfg.is_whitelist_configured():
+        # 白名单模式：运行专用白名单回测
+        cmd = [sys.executable, "whitelist_backtest.py"]
+        log("  白名单回测模式...")
+    else:
+        cmd = [sys.executable, "backtest_top10.py"]
+
+    result = subprocess.run(cmd, cwd=str(cfg.PROJECT_ROOT), check=False)
+    if result.returncode != 0:
+        log(f"  ⚠️ 回测子进程返回码: {result.returncode}")
     # 读取回测结果
-    nav_csv = cfg.PROJECT_ROOT / "backtest_nav.csv"
-    trades_csv = cfg.PROJECT_ROOT / "backtest_trades.csv"
-    
+    if whitelist and cfg.is_whitelist_configured():
+        nav_csv = cfg.PROJECT_ROOT / "whitelist_backtest_nav.csv"
+        trades_csv = cfg.PROJECT_ROOT / "whitelist_backtest_trades.csv"
+    else:
+        nav_csv = cfg.PROJECT_ROOT / "backtest_nav.csv"
+        trades_csv = cfg.PROJECT_ROOT / "backtest_trades.csv"
+
     metrics = {}
     if nav_csv.exists():
         nav_df = pd.read_csv(nav_csv)
@@ -121,24 +138,32 @@ def phase_backtest() -> dict:
             metrics['initial_value'] = nav_df['value'].iloc[0] if 'value' in nav_df.columns else 0
             metrics['final_value'] = nav_df['value'].iloc[-1] if 'value' in nav_df.columns else 0
             metrics['total_return'] = (metrics['final_value'] / max(metrics['initial_value'], 1) - 1) * 100
-    
+
     if trades_csv.exists():
-        trades_df = pd.read_csv(trades_csv)
-        metrics['total_trades'] = len(trades_df)
-    
+        try:
+            trades_df = pd.read_csv(trades_csv)
+            if not trades_df.empty:
+                metrics['total_trades'] = len(trades_df)
+        except pd.errors.EmptyDataError:
+            metrics['total_trades'] = 0
+
     return metrics
 
 
-def phase_performance_evaluation(backtest_metrics: dict) -> dict:
+def phase_performance_evaluation(backtest_metrics: dict, whitelist: bool = False) -> dict:
     """Phase 5: 绩效评估"""
     log("\n" + "=" * 70)
     log("  Phase 5: 绩效评估")
     log("=" * 70)
-    
+
     from engine.metrics import PerformanceAnalyzer
-    
-    nav_csv = cfg.PROJECT_ROOT / "backtest_nav.csv"
-    trades_csv = cfg.PROJECT_ROOT / "backtest_trades.csv"
+
+    if whitelist and cfg.is_whitelist_configured():
+        nav_csv = cfg.PROJECT_ROOT / "whitelist_backtest_nav.csv"
+        trades_csv = cfg.PROJECT_ROOT / "whitelist_backtest_trades.csv"
+    else:
+        nav_csv = cfg.PROJECT_ROOT / "backtest_nav.csv"
+        trades_csv = cfg.PROJECT_ROOT / "backtest_trades.csv"
     
     if not nav_csv.exists():
         log("  ⚠️  回测结果不存在，跳过绩效评估")
@@ -156,8 +181,8 @@ def phase_performance_evaluation(backtest_metrics: dict) -> dict:
     # 计算绩效指标
     metrics = analyzer.analyze(daily_value, trades)
     
-    log(f"\n  📊 绩效指标:")
-    log(f"     初始净值: {metrics.final_nav / (1 + metrics.total_return_pct/100):.4f}" if metrics.total_return_pct else f"     初始净值: 1.0000")
+    log("\n  📊 绩效指标:")
+    log(f"     初始净值: {metrics.final_nav / (1 + metrics.total_return_pct/100):.4f}" if metrics.total_return_pct else "     初始净值: 1.0000")
     log(f"     最终净值: {metrics.final_nav:.4f}")
     log(f"     总收益率: {metrics.total_return_pct:+.2f}%")
     log(f"     年化收益率: {metrics.annual_return_pct:+.2f}%")
@@ -177,8 +202,8 @@ def phase_performance_evaluation(backtest_metrics: dict) -> dict:
 
 
 def phase_feishu_push(ic_df: pd.DataFrame, stocks_df: pd.DataFrame,
-                      perf_metrics: dict, feishu_url: str = None,
-                      data_freshness: dict = None) -> bool:
+                      perf_metrics: dict, feishu_url: str | None = None,
+                      data_freshness: dict | None = None) -> bool:
     """Phase 6: 飞书推送"""
     log("\n" + "=" * 70)
     log("  Phase 6: 飞书推送")
@@ -195,8 +220,8 @@ def phase_feishu_push(ic_df: pd.DataFrame, stocks_df: pd.DataFrame,
         else:
             log("  ⚠️  飞书推送失败")
         return success
-    except Exception as e:
-        log(f"  ⚠️  飞书推送异常: {e}")
+    except Exception:  # noqa: BLE001
+        log("  ⚠️  飞书推送异常")
         return False
 
 
@@ -207,13 +232,22 @@ def main():
     parser.add_argument("--top-n", type=int, default=10, help="Top N 因子数量")
     parser.add_argument("--feishu-url", default=None, help="飞书 Webhook URL")
     parser.add_argument("--dry-run", action="store_true", help="只检查不执行")
+    parser.add_argument("--whitelist", action="store_true", help="对白名单股票运行流水线（需先在 .env 配置 WHITELIST_STOCKS）")
     args = parser.parse_args()
-    
+
     t_start = time.time()
     log("\n" + "=" * 70)
     log("  完整因子分析流水线启动")
     log(f"  时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    log(f"  模式: {'白名单' if args.whitelist else '全量'}")
     log("=" * 70)
+
+    # 白名单模式前置检查
+    if args.whitelist and not cfg.is_whitelist_configured():
+        log("❌ 白名单未配置，请在 .env 文件中设置 WHITELIST_STOCKS")
+        return 1
+    if args.whitelist:
+        log(f"  📋 白名单: {len(cfg.WHITELIST_STOCKS)} 只股票")
 
     # 前置数据时效检查
     data_freshness = check_data_freshness()
@@ -230,8 +264,7 @@ def main():
     }
 
     # Phase 1: 因子重算
-    if args.phase in ["all", "recompute"]:
-        if not phase_recompute_factors(args.dry_run, data_freshness=data_freshness):
+    if args.phase in ["all", "recompute"] and not phase_recompute_factors(args.dry_run, data_freshness=data_freshness):
             log("❌ 因子重算失败")
             return 1
 
@@ -240,22 +273,30 @@ def main():
         results['ic_df'] = phase_ic_analysis(feishu_url=args.feishu_url, data_freshness=data_freshness)
         if results['ic_df'].empty:
             log("⚠️  IC 分析结果为空")
-    
+
     # Phase 3: 选股
     if args.phase in ["all", "select"]:
         if results['ic_df'].empty:
             log("⚠️  没有 IC 结果，跳过选股")
         else:
             results['stocks_df'] = phase_stock_selection(results['ic_df'], top_n=args.top_n)
-    
+            # 白名单模式：过滤选股结果
+            if args.whitelist:
+                wl_df = results['stocks_df'][results['stocks_df']['instrument'].isin(cfg.WHITELIST_STOCKS)]
+                if not wl_df.empty:
+                    log(f"  📋 白名单选股: {len(wl_df)} 只")
+                    results['stocks_df'] = wl_df
+                else:
+                    log("  ⚠️  白名单中无选股结果")
+
     # Phase 4: 回测
     if args.phase in ["all", "backtest"]:
-        results['backtest_metrics'] = phase_backtest()
-    
+        results['backtest_metrics'] = phase_backtest(whitelist=args.whitelist)
+
     # Phase 5: 绩效评估
     if args.phase in ["all", "evaluate"]:
-        results['performance_metrics'] = phase_performance_evaluation(results['backtest_metrics'])
-    
+        results['performance_metrics'] = phase_performance_evaluation(results['backtest_metrics'], whitelist=args.whitelist)
+
     # Phase 6: 飞书推送
     if args.phase in ["all", "push"]:
         if results['ic_df'].empty:
@@ -276,7 +317,6 @@ def main():
     }
     
     summary_file = cfg.PROJECT_ROOT / "pipeline_summary.json"
-    import json
     with open(summary_file, 'w') as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
     

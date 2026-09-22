@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 RD-Agent 因子使用分析工具
 用于分析和管理 RD-Agent 生成的量化因子
 """
 
-import pandas as pd
-import glob
-from pathlib import Path
-import os
+import logging
 import warnings
+from pathlib import Path
+
+import pandas as pd
+
 warnings.filterwarnings('ignore')
 
 import config as cfg
+
+logger = logging.getLogger(__name__)
+
 
 class FactorAnalyzer:
     def __init__(self, workspace_path=None):
@@ -22,8 +27,7 @@ class FactorAnalyzer:
     def get_all_factors(self):
         """获取所有因子信息"""
         factor_files = list(self.factors_dir.glob("*/factor.py"))
-        result_files = list(self.factors_dir.glob("*/result.h5"))
-        
+
         factor_info = []
         for factor_file in factor_files:
             factor_dir = factor_file.parent
@@ -52,7 +56,7 @@ class FactorAnalyzer:
                         'min': result.iloc[:, 0].min(),
                         'max': result.iloc[:, 0].max(),
                     }
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"读取结果文件失败 {factor_id}: {e}")
             
             factor_info.append({
@@ -81,8 +85,8 @@ class FactorAnalyzer:
                         if 'factor.name = ' in line:
                             return line.split("'")[1]
                 return "Unknown"
-        except Exception as e:
-            logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
+        except Exception:
+            logger.exception("Unhandled exception")
             return "Unknown"
     
     def analyze_factor_quality(self):
@@ -115,7 +119,7 @@ class FactorAnalyzer:
             try:
                 data = pd.read_hdf(result_file, key='data')
                 return data
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"加载因子数据失败: {e}")
                 return None
         return None

@@ -62,6 +62,7 @@ def ic_analysis(factor_results: Dict[str, pd.Series],
             row[f"IC_{fd}d"] = ic_val
 
             # t-stat
+            daily_ic_tmp = None
             if not np.isnan(ic_val) and len(f) > 20:
                 f_dates_tmp = f.index.get_level_values(0)
                 daily_ic_vals = []

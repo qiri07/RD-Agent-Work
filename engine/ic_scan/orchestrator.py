@@ -114,9 +114,9 @@ def run_ic_scan(sessions=None, phase1_only: bool = False,
             logger.info(ic_df[["factor_id"] + ic_cols_show].to_string(index=False))
 
         # 保存
-        out_pq = cfg.FACTOR_SOURCE / "ic_scan_results.parquet"
+        out_pq = cfg.FACTOR_SOURCE / "ic_scan_results_new.parquet"
         ic_df.to_parquet(out_pq)
-        out_csv = cfg.PROJECT_ROOT / "ic_scan_results.csv"
+        out_csv = cfg.PROJECT_ROOT / "ic_scan_results_new.csv"
         ic_df.to_csv(out_csv, index=False)
         logger.info(f"\n结果已保存: {out_pq}, {out_csv}")
 

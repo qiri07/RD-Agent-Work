@@ -8,9 +8,8 @@
 
 from __future__ import annotations
 
-import glob
+import logging
 import os
-import re
 import shutil
 import sys
 import time
@@ -20,6 +19,9 @@ import pandas as pd
 
 # ── 路径配置 ──────────────────────────────────────────────────────────────────
 import config as cfg
+import logging
+logger = logging.getLogger(__name__)
+
 BASE = cfg.PROJECT_ROOT
 WS = cfg.RDAGENT_WORKSPACE
 SRC_PQ = cfg.DAILY_PV_PQ  # 使用 trade-krono 转换的干净数据
@@ -49,9 +51,7 @@ def copy_data_to_session(session: Path) -> bool:
             dst_pq = session / "daily_pv.parquet"
             dst_h5 = session / "daily_pv.h5"
             # 删除旧的符号链接或文件（symlink 会导致 shutil.copy2 写入目标而非替换链接）
-            if dst_pq.is_symlink():
-                dst_pq.unlink()
-            elif dst_pq.exists():
+            if dst_pq.is_symlink() or dst_pq.exists():
                 dst_pq.unlink()
             # 复制 parquet（实际文件，不是符号链接）
             shutil.copy2(SRC_PQ, dst_pq)
@@ -59,9 +59,9 @@ def copy_data_to_session(session: Path) -> bool:
             try:
                 df_pq = pd.read_parquet(dst_pq)
                 df_pq.to_hdf(dst_h5, key="data", mode="w", format="table")
-            except Exception as e:
-                logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
-                pass  # h5生成失败不影响使用，因子代码会读parquet
+            except Exception:
+                logger.exception("Unhandled exception")
+                # h5生成失败不影响使用，因子代码会读parquet
             # 清掉旧的执行锁
             lock = session / "execution.lock"
             if lock.exists():
@@ -72,7 +72,7 @@ def copy_data_to_session(session: Path) -> bool:
         else:
             print(f"  ❌ {session.name}: 源 parquet 不存在", flush=True)
             return False
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"  ❌ {session.name}: {e}", flush=True)
         return False
 
@@ -83,7 +83,6 @@ def recompute_factor(session: Path) -> tuple[bool, str]:
     if not factor_py.exists():
         return False, "无 factor.py"
 
-    old_cwd = os.getcwd()
     try:
         os.chdir(session)
         start = time.time()
@@ -112,7 +111,7 @@ def recompute_factor(session: Path) -> tuple[bool, str]:
         info = f"✅ {rows:,}行, {stocks}只, {date_min.date()}~{date_max.date()}, {elapsed:.1f}s"
         return True, info
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         elapsed = time.time() - start
         return False, f"❌ 执行失败: {str(e)[:120]} ({elapsed:.1f}s)"
 
@@ -128,7 +127,7 @@ def main():
     if SRC_H5.exists():
         print(f"源 h5:      {SRC_H5.stat().st_size / 1024 / 1024:.0f} MB")
     else:
-        print(f"源 h5:      N/A (将使用 parquet)")
+        print("源 h5:      N/A (将使用 parquet)")
     print()
 
     sessions = get_sessions()
@@ -145,8 +144,8 @@ def main():
                 if h5.exists():
                     try:
                         old_stocks = pd.read_hdf(h5, key="data").index.get_level_values("instrument").nunique()
-                    except Exception as e:
-                        logging.getLogger(__name__).exception("Unhandled exception", exc_info=True)
+                    except Exception:
+                        logger.exception("Unhandled exception")
                         old_stocks = "损坏"
                 print(f"  [dry] {s.name}: {old_stocks} 只 → 5,553 只")
                 updated += 1

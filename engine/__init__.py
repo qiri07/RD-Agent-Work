@@ -14,8 +14,10 @@ from engine.recompute import (
     run_phase1_recompute, run_phase2_ic_analysis,
     ic_analysis_yearly, generate_ic_report, print_summary, run_full_recompute,
 )
-from engine.ic_scan import compute_ic, ic_analysis, run_ic_scan, IC_FORWARD_DAYS, IC_MIN_STOCKS_PER_DAY
+from engine.ic_scan import ic_analysis, run_ic_scan, IC_FORWARD_DAYS, IC_MIN_STOCKS_PER_DAY
 from engine.data_freshness import check_data_freshness, get_price_data_cutoff, get_factor_data_cutoff
+from engine.factor_compute import load_whitelist_data, compute_factors, synthesize_score, FACTOR_NAMES
+from engine.factor_compute import compute_ic as compute_ic_whitelist  # renamed to avoid name clash with ic_scan.compute_ic
 
 __all__ = [
     'PriceEngine',
@@ -47,4 +49,9 @@ __all__ = [
     'check_data_freshness',
     'get_price_data_cutoff',
     'get_factor_data_cutoff',
+    'load_whitelist_data',
+    'compute_factors',
+    'synthesize_score',
+    'FACTOR_NAMES',
+    'compute_ic_whitelist',  # whitelist-specific IC (engine.factor_compute); use ic_scan.compute_ic for general IC
 ]

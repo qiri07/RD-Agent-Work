@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 项目配置模块 — 统一管理路径、密钥、魔法数字
 ============================================
@@ -9,6 +10,8 @@ from __future__ import annotations
 """
 import os
 from pathlib import Path
+
+import pandas as pd
 
 # ═══════════════════════════════════════════════════════════
 # 项目根目录
@@ -99,19 +102,75 @@ BACKTEST_PERIODS = [
 ]
 
 # ═══════════════════════════════════════════════════════════
+# 白名单股票
+# ═══════════════════════════════════════════════════════════
+# 格式: 逗号分隔的股票代码，例如 "SH600000,SH600001,SZ000001"
+# 支持无前缀格式（如 "600000"），自动补全 SH/SZ/BJ 前缀
+def _normalize_whitelist_codes(codes: list[str]) -> list[str]:
+    """将白名单代码标准化为 SH/SZ/BJ 前缀格式"""
+    _pq = FACTOR_SOURCE / "daily_pv_full.parquet"
+    if not _pq.exists():
+        # 数据不存在时直接返回原始列表
+        return [c.upper() for c in codes]
+    _df = pd.read_parquet(_pq)
+    _all_insts = set(_df.index.get_level_values('instrument').unique())
+    _normalized = []
+    for c in codes:
+        c = c.strip().upper()
+        if any(c.startswith(p) for p in ('SH', 'SZ', 'BJ')):
+            _normalized.append(c)
+        elif c.isdigit() and len(c) == 6:
+            # 尝试带前缀匹配
+            for _p in ('SH', 'SZ', 'BJ'):
+                _t = _p + c
+                if _t in _all_insts:
+                    _normalized.append(_t)
+                    break
+            else:
+                # 无前缀也能匹配（数据中直接使用无 prefix）
+                if c in _all_insts:
+                    _normalized.append(c)
+                else:
+                    _normalized.append(c)  # 保留原样，后续使用时再报错
+        else:
+            _normalized.append(c)
+    return _normalized
+
+_WHITELIST_ENV = os.getenv("WHITELIST_STOCKS", "").strip()
+if _WHITELIST_ENV:
+    WHITELIST_STOCKS = _normalize_whitelist_codes([s.strip() for s in _WHITELIST_ENV.split(",")])
+else:
+    # 从 .env 文件读取（如果存在）
+    _env_file = PROJECT_ROOT / ".env"
+    WHITELIST_STOCKS = []
+    if _env_file.exists():
+        for line in _env_file.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("WHITELIST_STOCKS="):
+                _val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if _val:
+                    WHITELIST_STOCKS = _normalize_whitelist_codes([s.strip() for s in _val.split(",")])
+                break
+
+# ═══════════════════════════════════════════════════════════
 # 辅助函数
 # ═══════════════════════════════════════════════════════════
 def get_split_dates():
     """返回拆分日期检测的 Timestamp 对象，若未配置则返回 None"""
     from datetime import datetime
-    prev = datetime.strptime(BACKTEST_SPLIT_DATE_PREV, "%Y-%m-%d") if BACKTEST_SPLIT_DATE_PREV else None
-    curr = datetime.strptime(BACKTEST_SPLIT_DATE_CURR, "%Y-%m-%d") if BACKTEST_SPLIT_DATE_CURR else None
+    prev = datetime.strptime(BACKTEST_SPLIT_DATE_PREV, "%Y-%m-%d") if BACKTEST_SPLIT_DATE_PREV else None  # noqa: DTZ007
+    curr = datetime.strptime(BACKTEST_SPLIT_DATE_CURR, "%Y-%m-%d") if BACKTEST_SPLIT_DATE_CURR else None  # noqa: DTZ007
     return prev, curr
 
 
 def is_feishu_configured() -> bool:
     """检查飞书 Webhook 是否已配置"""
     return bool(FEISHU_WEBHOOK_URL) and "YOUR_WEBHOOK" not in FEISHU_WEBHOOK_URL
+
+
+def is_whitelist_configured() -> bool:
+    """检查白名单是否已配置"""
+    return len(WHITELIST_STOCKS) > 0
 
 
 # 字符串路径（用于传给接受 str 的 API）
@@ -128,6 +187,9 @@ if __name__ == "__main__":
     print(f"  数据源目录:     {FACTOR_SOURCE}")
     print(f"  因子工作区:     {RDAGENT_WORKSPACE}")
     print(f"  飞书 Webhook:   {'✅ 已配置' if is_feishu_configured() else '❌ 未配置'}")
+    print(f"  白名单股票:     {len(WHITELIST_STOCKS)} 只" if is_whitelist_configured() else "  白名单股票:     ❌ 未配置")
+    if is_whitelist_configured():
+        print(f"                   {', '.join(WHITELIST_STOCKS[:10])}" + ("..." if len(WHITELIST_STOCKS) > 10 else ""))
     print(f"  IC 最小股票数:   {IC_MIN_DAILY_STOCKS}")
     print(f"  默认 Top N:     {IC_TOP_N_DEFAULT}")
     print(f"  选股 Top K:     {STOCK_TOP_K_DEFAULT}")

@@ -6,16 +6,10 @@ from __future__ import annotations
 检查价格数据和因子数据的截止日，用于流水线前置校验和报告推送。
 """
 import logging
-import sys
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-
-# 添加项目根目录到路径（支持直接运行此脚本）
-_project_root = Path(__file__).resolve().parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
 
 import config as cfg
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 演示如何在量化策略中使用 RD-Agent 生成的因子
 """
 
+import logging
+import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -13,6 +15,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import config as cfg
+logger = logging.getLogger(__name__)
 
 class QuantFactorStrategy:
     """基于RD-Agent因子的量化策略"""

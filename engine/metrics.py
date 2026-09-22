@@ -117,7 +117,7 @@ class PerformanceAnalyzer:
             win_rate_pct=round(win_rate, 1),
             total_trades=len(sells),
             win_trades=len(wins),
-            profit_factor=round(profit_factor, 2) if profit_factor != float('inf') else 999.99,
+            profit_factor=round(profit_factor, 2) if not np.isinf(profit_factor) else 999.99,
             final_value=round(float(df['value'].iloc[-1]), 2),
             final_nav=round(float(nav.iloc[-1]), 4)
         )

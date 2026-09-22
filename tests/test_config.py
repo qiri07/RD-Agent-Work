@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
 """
 config.py 单元测试 — 不使用 pytest，用 unittest 兼容
 """
@@ -93,8 +94,8 @@ class TestSplitDates(unittest.TestCase):
             import config as cfg
             prev, curr = cfg.get_split_dates()
             from datetime import datetime
-            self.assertEqual(prev, datetime(2026, 9, 1))
-            self.assertEqual(curr, datetime(2026, 9, 2))
+            self.assertEqual(prev, datetime(2026, 9, 1))  # noqa: DTZ001
+            self.assertEqual(curr, datetime(2026, 9, 2))  # noqa: DTZ001
 
     def test_without_env(self):
         env = {k: v for k, v in os.environ.items()
@@ -105,6 +106,52 @@ class TestSplitDates(unittest.TestCase):
             prev, curr = cfg.get_split_dates()
             self.assertIsNone(prev)
             self.assertIsNone(curr)
+
+
+class TestWhitelistConfig(unittest.TestCase):
+    def test_whitelist_from_env(self):
+        reload_config()
+        with mock.patch.dict(os.environ, {
+            "WHITELIST_STOCKS": "SH600000,SH600001,SZ000001"
+        }):
+            import config as cfg
+            self.assertEqual(cfg.WHITELIST_STOCKS, ["SH600000", "SH600001", "SZ000001"])
+            self.assertTrue(cfg.is_whitelist_configured())
+
+    def test_whitelist_from_env_file(self):
+        """从 .env 文件读取白名单（当前 .env 已配置）"""
+        reload_config()
+        # 清除环境变量，确保从 .env 文件读取
+        env = {k: v for k, v in os.environ.items() if k != "WHITELIST_STOCKS"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            import config as cfg
+            self.assertTrue(cfg.is_whitelist_configured())
+            self.assertGreater(len(cfg.WHITELIST_STOCKS), 0)
+
+    def test_whitelist_env_overrides_file(self):
+        """环境变量 WHITELIST_STOCKS 优先于 .env 文件"""
+        reload_config()
+        env = {k: v for k, v in os.environ.items() if k != "WHITELIST_STOCKS"}
+        with mock.patch.dict(os.environ, {**env, "WHITELIST_STOCKS": "SH600000,SZ000001"}):
+            import config as cfg
+            self.assertEqual(cfg.WHITELIST_STOCKS, ["SH600000", "SZ000001"])
+
+    def test_whitelist_whitespace_handling(self):
+        reload_config()
+        with mock.patch.dict(os.environ, {
+            "WHITELIST_STOCKS": " SH600000 , SH600001 , SZ000001 "
+        }):
+            import config as cfg
+            self.assertEqual(cfg.WHITELIST_STOCKS, ["SH600000", "SH600001", "SZ000001"])
+
+    def test_whitelist_single_stock(self):
+        reload_config()
+        with mock.patch.dict(os.environ, {
+            "WHITELIST_STOCKS": "SH600000"
+        }):
+            import config as cfg
+            self.assertEqual(cfg.WHITELIST_STOCKS, ["SH600000"])
+            self.assertTrue(cfg.is_whitelist_configured())
 
 
 if __name__ == "__main__":
