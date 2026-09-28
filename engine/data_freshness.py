@@ -59,8 +59,12 @@ def get_factor_data_cutoff() -> tuple[Optional[pd.Timestamp], int]:
                     s = pd.read_hdf(fp, key="data")
                 else:
                     s = pd.read_parquet(fp)
-                col = s.columns[0]
-                dates = s[col].index.get_level_values(0)
+                # s 可能是 Series 或 DataFrame
+                if isinstance(s, pd.Series):
+                    dates = s.index.get_level_values(0)
+                else:
+                    col = s.columns[0]
+                    dates = s[col].index.get_level_values(0)
                 if len(dates) > 0:
                     latest_dates.append(dates.max())
                 break
