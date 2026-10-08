@@ -74,3 +74,4 @@ package.json
 回测报告_*.md
 pipeline_summary.json
 筛选结果_*.md
+*.csv
