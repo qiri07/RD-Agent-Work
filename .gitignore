@@ -68,3 +68,9 @@ factor_ranking_*.txt
 log/
 package-lock.json
 package.json
+*.csv
+*.json
+筛选结果_*.md
+回测报告_*.md
+pipeline_summary.json
+筛选结果_*.md

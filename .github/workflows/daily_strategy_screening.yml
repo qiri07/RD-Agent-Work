@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -q pandas numpy scipy loguru
+        run: pip install -q pandas numpy scipy loguru tabulate
 
       - name: Run 8-strategy screening
         run: python scripts/screening_strategies.py --top-n 20 --push-feishu
