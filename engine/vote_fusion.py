@@ -83,6 +83,10 @@ def run_signal_pipeline(
     active = active or _DEFAULT_ACTIVE
     strategy_signals: dict[str, pd.Series] = {}
 
+    # 标准化列名：$close → close 等（兼容不同数据源）
+    col_map = {col: col.lstrip("$") for col in df.columns if col.startswith("$")}
+    df = df.rename(columns=col_map)
+
     for name in active:
         cls = _STRATEGIES.get(name)
         if cls is None:
@@ -91,26 +95,29 @@ def run_signal_pipeline(
         try:
             sig = cls.execute(df)
             n_sig = int((sig != 0).sum())
-            logger.info("策略 %s → 信号数 %d（买 %d / 卖 %d）",
-                        name, n_sig, int((sig == 1).sum()), int((sig == -1).sum()))
+            logger.opt(depth=1).info(
+                "策略 {} → 信号数 {}（买 {} / 卖 {}）",
+                name, n_sig, int((sig == 1).sum()), int((sig == -1).sum()))
             strategy_signals[name] = sig
         except Exception as e:
-            logger.warning("策略 %s 执行异常: %s", name, e)
+            logger.opt(depth=1).warning("策略 {} 执行异常: {}", name, e)
 
     if not strategy_signals:
         raise RuntimeError("没有策略产生有效信号")
 
     series = list(strategy_signals.values())
     fused = fuse_signals(series, threshold=threshold)
-    logger.info("投票融合完成，买入 %d / 卖出 %d / 持有 %d 日",
-                int((fused == 1).sum()), int((fused == -1).sum()),
-                int((fused == 0).sum()))
+    logger.opt(depth=1).info(
+        "投票融合完成，买入 {} / 卖出 {} / 持有 {} 日",
+        int((fused == 1).sum()), int((fused == -1).sum()),
+        int((fused == 0).sum()))
 
     if trend_filter:
         fused = apply_trend_filter(df, fused, ma_window=trend_ma_window)
-        logger.info("趋势过滤后，买入 %d / 卖出 %d / 持有 %d 日",
-                    int((fused == 1).sum()), int((fused == -1).sum()),
-                    int((fused == 0).sum()))
+        logger.opt(depth=1).info(
+            "趋势过滤后，买入 {} / 卖出 {} / 持有 {} 日",
+            int((fused == 1).sum()), int((fused == -1).sum()),
+            int((fused == 0).sum()))
 
     return {
         "signal":           fused,

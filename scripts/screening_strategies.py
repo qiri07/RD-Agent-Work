@@ -41,34 +41,31 @@ def run_single_screening(
         result = run_signal_pipeline(stock, threshold=2, trend_filter=True)
         signals = result["signal"]
 
-        # 构造回测所需价格字典
-        dates = sorted(stock.index)
-        price_map = {}
-        for dt in dates:
-            row = stock.loc[dt]
-            price_map[(dt, instrument)] = {
-                "open":  float(row["$open"]),
-                "close": float(row["$close"]),
-                "high":  float(row["$high"]),
-                "low":   float(row["$low"]),
+        # 向量化构造 price_map（避免逐行 .loc 循环）
+        dates = stock.index.tolist()
+        vals = stock[["$open", "$close", "$high", "$low"]].to_numpy()
+        price_map = {
+            (dates[i], instrument): {
+                "open":  float(vals[i, 0]),
+                "close": float(vals[i, 1]),
+                "high":  float(vals[i, 2]),
+                "low":   float(vals[i, 3]),
             }
+            for i in range(len(dates))
+        }
 
-        # 基于信号的每日选股（有信号的股票列表）
-        all_dates = list(dates)
-        signal_dict: dict[int, list[str]] = {}
-        for i, dt in enumerate(all_dates):
-            sig_val = signals.iloc[i] if i < len(signals) else 0
-            if sig_val == 1:
-                signal_dict[i] = [instrument]
-            elif sig_val == -1 and instrument in signal_dict.get(i, []):
-                # 卖出信号：当天移出持仓（由回测引擎处理）
-                pass
+        # 构建买入信号字典
+        signal_dict = {
+            i: [instrument]
+            for i, v in enumerate(signals.values)
+            if v == 1
+        }
 
         bt_result = backtest_engine.run(
-            dates=all_dates,
+            dates=dates,
             price_map=price_map,
             signals=signal_dict,
-            hold_days=0,  # 信号驱动，不固定持有
+            hold_days=0,
             top_k=1,
         )
         metrics = performance_analyzer.analyze(bt_result.daily_value, bt_result.trades)
@@ -103,15 +100,16 @@ def main():
     df.index.names = ["datetime", "instrument"]
     df = df.sort_index()
     df = df[~df.index.duplicated(keep="first")]
-    # 过滤北交所（数据太少，策略无法产生有效信号）
-    instruments = [i for i in instruments if not i.startswith("BJ")]
+    # 提取全量股票列表（过滤北交所）
+    all_instruments = df.index.get_level_values("instrument").drop_duplicates().tolist()
+    instruments = [i for i in all_instruments if not i.startswith("BJ")]
     print(f"   共 {len(instruments)} 只股票\n")
 
     # 初始化回测引擎
     backtest_engine = create_backtest_engine()
     perf_analyzer = PerformanceAnalyzer(initial_capital=cfg.BACKTEST_INITIAL_CAPITAL)
 
-    # 并行筛选（简化版：串行，避免多线程 GIL 问题）
+    # 串行筛选（CPython GIL 使多线程反而更慢；~70 只/秒，全量 ~75s）
     results = []
     start = time.time()
     for i, inst in enumerate(instruments):
@@ -122,7 +120,6 @@ def main():
             elapsed = time.time() - start
             rate = (i + 1) / elapsed
             print(f"   进度: {i+1}/{len(instruments)} ({rate:.1f} 只/秒)")
-
     elapsed = time.time() - start
     print(f"\n✅ 筛选完成，有效结果 {len(results)} 只，耗时 {elapsed:.0f}s\n")
 
