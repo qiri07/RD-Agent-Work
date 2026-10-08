@@ -27,6 +27,7 @@ def _make_price_df(instruments, dates):
             rows.append({
                 "date": d, "instrument": inst,
                 "$close": price, "$volume": int(1_000_000 * (1 + np.random.randn() * 0.1)),
+                "$high": price * 1.02, "$low": price * 0.98,
             })
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
@@ -104,13 +105,15 @@ class TestComputeFactors(unittest.TestCase):
         self.assertIsInstance(result, pd.DataFrame)
 
     def test_compute_factors_has_all_factors(self):
-        """应包含所有9个因子"""
+        """应包含所有16个因子"""
         from engine.factor_compute import compute_factors
         result = compute_factors(self.df)
         expected = {
             "momentum_5d", "momentum_10d", "momentum_20d",
             "reversal_5d", "volatility_20d", "rsi_14",
             "macd", "bollinger_pos", "volume_ratio",
+            "cci_14", "kdj_k", "kdj_d", "kdj_j",
+            "plus_di", "minus_di", "adx_14",
         }
         self.assertTrue(expected.issubset(set(result.columns)))
 

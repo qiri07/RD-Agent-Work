@@ -62,6 +62,9 @@ FACTOR_NAMES = [
     'momentum_5d', 'momentum_10d', 'momentum_20d',
     'reversal_5d', 'volatility_20d', 'rsi_14',
     'macd', 'bollinger_pos', 'volume_ratio',
+    # 补充技术因子（来自 multi_agent_quant 8策略投票融合）
+    'cci_14', 'kdj_k', 'kdj_d', 'kdj_j',
+    'plus_di', 'minus_di', 'adx_14',
 ]
 
 
@@ -82,6 +85,8 @@ def compute_factors(df: pd.DataFrame) -> pd.DataFrame:
     for inst in all_insts:
         stock = df.xs(inst, level='instrument')
         close = stock['$close'].values
+        high  = stock['$high'].values
+        low   = stock['$low'].values
         volume = stock['$volume'].values
         dates = stock.index
 
@@ -164,6 +169,85 @@ def compute_factors(df: pd.DataFrame) -> pd.DataFrame:
         for d, r in zip(dates, result):
             all_rows.append((d, inst, name, r))
 
+        # ── CCI / KDJ / ADX（需要 $high / $low 列）──────────────
+        if "high" in stock.columns or "$high" in stock.columns:
+            high_key = "high" if "high" in stock.columns else "$high"
+            low_key  = "low"  if "low"  in stock.columns else "$low"
+            high = stock[high_key].values
+            low  = stock[low_key].values
+
+            # ── CCI ──
+            name = 'cci_14'
+            typical = (high + low + close) / 3
+            result = np.full(len(close), np.nan)
+            for i in range(14, len(close)):
+                window = typical[i - 14:i]
+                sma  = window.mean()
+                mad  = np.abs(window - sma).mean()
+                if mad > 0:
+                    result[i] = (typical[i] - sma) / (0.015 * mad)
+            for d, r in zip(dates, result):
+                all_rows.append((d, inst, name, r))
+
+            # ── KDJ ──
+            period = 9
+            rsv = np.full(len(close), np.nan)
+            for i in range(period - 1, len(close)):
+                ln  = np.min(low[i - period + 1:i + 1])
+                hn  = np.max(high[i - period + 1:i + 1])
+                denom = hn - ln
+                if denom > 0:
+                    rsv[i] = (close[i] - ln) / denom * 100
+            k_vals = np.full(len(close), np.nan)
+            d_vals = np.full(len(close), np.nan)
+            k_ema = d_ema = 0.0
+            init_k = init_d = False
+            for i in range(len(close)):
+                if not np.isnan(rsv[i]):
+                    if not init_k:
+                        k_ema = rsv[i]; init_k = True
+                    else:
+                        k_ema = k_ema * 0.5 + rsv[i] * 0.5
+                    k_vals[i] = k_ema
+                if not np.isnan(k_vals[i]):
+                    if not init_d:
+                        d_ema = k_vals[i]; init_d = True
+                    else:
+                        d_ema = d_ema * 0.5 + k_vals[i] * 0.5
+                    d_vals[i] = d_ema
+            j_vals = 3 * k_vals - 2 * d_vals
+            for i in range(len(close)):
+                if not np.isnan(k_vals[i]):
+                    all_rows.append((dates[i], inst, 'kdj_k', k_vals[i]))
+                if not np.isnan(d_vals[i]):
+                    all_rows.append((dates[i], inst, 'kdj_d', d_vals[i]))
+                all_rows.append((dates[i], inst, 'kdj_j', j_vals[i]))
+
+            # ── ADX ──
+            tr_arr = np.maximum(high - low,
+                         np.maximum(np.abs(high - np.roll(close, 1)),
+                                    np.abs(low  - np.roll(close, 1))))
+            dh = np.diff(high); dl = -np.diff(low)
+            plus_dm_raw = np.where((dh > dl) & (dh > 0), dh, 0)
+            minus_dm_raw = np.where((dl > dh) & (dl > 0), dl, 0)
+            plus_dm  = np.insert(plus_dm_raw,  0, 0.0)
+            minus_dm = np.insert(minus_dm_raw, 0, 0.0)
+            atr_p = np.convolve(tr_arr, np.ones(14) / 14, mode='valid')
+            atr_p = np.concatenate([np.full(13, np.nan), atr_p])
+            pd_raw = np.convolve(plus_dm,  np.ones(14) / 14, mode='valid')
+            md_raw = np.convolve(minus_dm, np.ones(14) / 14, mode='valid')
+            plus_di  = 100 * np.concatenate([np.full(13, np.nan), pd_raw]) / np.maximum(atr_p, 1e-10)
+            minus_di = 100 * np.concatenate([np.full(13, np.nan), md_raw]) / np.maximum(atr_p, 1e-10)
+            dx  = 100 * np.abs(plus_di - minus_di) / np.maximum(plus_di + minus_di, 1e-10)
+            adx_ = np.convolve(dx, np.ones(14) / 14, mode='valid')
+            adx_ = np.concatenate([np.full(13, np.nan), adx_])
+            for i in range(len(close)):
+                if not np.isnan(plus_di[i]):
+                    all_rows.append((dates[i], inst, 'plus_di',  plus_di[i]))
+                if not np.isnan(minus_di[i]):
+                    all_rows.append((dates[i], inst, 'minus_di', minus_di[i]))
+                if not np.isnan(adx_[i]):
+                    all_rows.append((dates[i], inst, 'adx_14',   adx_[i]))
     result_df = pd.DataFrame(all_rows, columns=['datetime', 'instrument', 'factor', 'value'])
     factors_df = result_df.pivot(index=['datetime', 'instrument'],
                                   columns='factor', values='value')

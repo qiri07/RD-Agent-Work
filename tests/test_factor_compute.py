@@ -105,6 +105,8 @@ class TestComputeFactors(unittest.TestCase):
             "momentum_5d", "momentum_10d", "momentum_20d",
             "reversal_5d", "volatility_20d", "rsi_14",
             "macd", "bollinger_pos", "volume_ratio",
+            "cci_14", "kdj_k", "kdj_d", "kdj_j",
+            "plus_di", "minus_di", "adx_14",
         }
         self.assertTrue(expected.issubset(set(result.columns)))
         self.assertEqual(set(result.columns), expected)
@@ -128,7 +130,8 @@ class TestComputeFactors(unittest.TestCase):
         rows = []
         for d in dates:
             rows.append({"date": d, "instrument": "SH600000",
-                          "$close": 10.0, "$volume": 1_000_000})
+                          "$close": 10.0, "$volume": 1_000_000,
+                          "$high": 10.05, "$low": 9.95})
         df = pd.DataFrame(rows)
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index(["date", "instrument"])
@@ -216,9 +219,11 @@ class TestFactorNamesConstant(unittest.TestCase):
             "momentum_5d", "momentum_10d", "momentum_20d",
             "reversal_5d", "volatility_20d", "rsi_14",
             "macd", "bollinger_pos", "volume_ratio",
+            "cci_14", "kdj_k", "kdj_d", "kdj_j",
+            "plus_di", "minus_di", "adx_14",
         }
         self.assertEqual(set(FACTOR_NAMES), expected)
-        self.assertEqual(len(FACTOR_NAMES), 9)
+        self.assertEqual(len(FACTOR_NAMES), 16)
 
 
 if __name__ == "__main__":
