@@ -94,20 +94,16 @@ def compute_factors(df: pd.DataFrame) -> pd.DataFrame:
         for period in (5, 10, 20):
             name = f'momentum_{period}d'
             result = np.full(len(close), np.nan)
-            for i in range(period, len(close) - period):
+            for i in range(period, len(close)):
                 result[i] = close[i] / close[i - period] - 1
-            result = np.roll(result, -period)
-            result[-period:] = np.nan
             for d, r in zip(dates, result):
                 all_rows.append((d, inst, name, r))
 
         # ── 反转因子 ──
         name = 'reversal_5d'
         result = np.full(len(close), np.nan)
-        for i in range(5, len(close) - 5):
+        for i in range(5, len(close)):
             result[i] = -(close[i] / close[i - 5] - 1)
-        result = np.roll(result, -5)
-        result[-5:] = np.nan
         for d, r in zip(dates, result):
             all_rows.append((d, inst, name, r))
 
@@ -358,10 +354,20 @@ def synthesize_score(day_factors: dict) -> pd.DataFrame | None:
     if not day_factors:
         return None
     df = pd.DataFrame(day_factors)
-    for col in df.columns:
-        mean = df[col].mean()
-        std = df[col].std()
-        df[col] = ((df[col] - mean) / std).fillna(0) if std > 0 else 0
+    # 横截面 Z-score 标准化（按 datetime 分组）
+    # 如果索引没有 'datetime' 层级（如 whitelist_pipeline 的单日截面），则使用全局标准化
+    if df.index.names and "datetime" in df.index.names:
+        for col in df.columns:
+            grouped = df[col].groupby(level="datetime", sort=False)
+            mean = grouped.transform('mean')
+            std = grouped.transform('std')
+            df[col] = (df[col] - mean) / std.replace(0, np.nan)
+    else:
+        for col in df.columns:
+            mean = df[col].mean()
+            std = df[col].std()
+            df[col] = ((df[col] - mean) / std).fillna(0) if std > 0 else 0
+    df = df.fillna(0)
     n_factors = len(df.columns)
     df['composite_score'] = df.sum(axis=1) / n_factors
     df['rank'] = df['composite_score'].rank(ascending=False, method='dense').astype(int)

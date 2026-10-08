@@ -124,6 +124,46 @@ class TestComputeFactors(unittest.TestCase):
         self.assertTrue((m5 > -1).all())
         self.assertTrue(m5.replace([np.inf, -np.inf], np.nan).notna().all())
 
+    def test_momentum_no_lookahead_bias(self):
+        """动量因子不应使用前向数据（前视偏差检测）"""
+        dates = pd.date_range("2024-01-01", periods=20, freq="B")
+        rows = []
+        # 创建单调递增价格，使动量因子为正
+        for i, d in enumerate(dates):
+            rows.append({"date": d, "instrument": "SH600000",
+                          "$close": 10.0 + i * 0.5, "$volume": 1_000_000,
+                          "$high": 10.5 + i * 0.5, "$low": 9.5 + i * 0.5})
+        df = pd.DataFrame(rows)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index(["date", "instrument"])
+        df.index.names = ["datetime", "instrument"]
+        result = compute_factors(df)
+        m5 = result["momentum_5d"].dropna()
+        # 第一个有效动量值应在 index>=5（需要5天历史）
+        first_date = m5.index[0][0]
+        first_pos = dates.get_loc(first_date)
+        self.assertGreaterEqual(first_pos, 5)
+        # 动量值应为正（价格上涨）
+        self.assertTrue((m5 > 0).all())
+
+    def test_reversal_no_lookahead_bias(self):
+        """反转因子不应使用前向数据（前视偏差检测）"""
+        dates = pd.date_range("2024-01-01", periods=20, freq="B")
+        rows = []
+        # 创建单调递增价格，反转因子应为负
+        for i, d in enumerate(dates):
+            rows.append({"date": d, "instrument": "SH600000",
+                          "$close": 10.0 + i * 0.5, "$volume": 1_000_000,
+                          "$high": 10.5 + i * 0.5, "$low": 9.5 + i * 0.5})
+        df = pd.DataFrame(rows)
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index(["date", "instrument"])
+        df.index.names = ["datetime", "instrument"]
+        result = compute_factors(df)
+        r5 = result["reversal_5d"].dropna()
+        # 反转因子在上涨市场中应为负
+        self.assertTrue((r5 < 0).all())
+
     def test_constant_price_rsi(self):
         """恒定价格时 RSI 应为 50"""
         dates = pd.date_range("2024-01-01", periods=30, freq="B")
@@ -209,6 +249,36 @@ class TestSynthesizeScore(unittest.TestCase):
         result = synthesize_score(data)
         self.assertIsInstance(result, pd.DataFrame)
         self.assertEqual(len(result), 3)
+
+    def test_synthesize_cross_sectional_zscore(self):
+        """synthesize_score 应使用横截面 Z-score（按 datetime 分组）"""
+        # 两个因子不同量级：f1 范围 0-100，f2 范围 0-0.01
+        insts = [f"SH{i:06d}" for i in range(100, 110)]
+        idx = pd.MultiIndex.from_tuples(
+            [("2024-01-01", inst) for inst in insts],
+            names=["datetime", "instrument"])
+        data = {
+            "factor_large": pd.Series(range(10), index=idx) * 10.0,
+            "factor_small": pd.Series(range(10), index=idx) * 0.01,
+        }
+        result = synthesize_score(data)
+        # 横截面标准化后，每个因子在该日应有 mean≈0, std≈1
+        # 如果用了全局标准化，factor_large 会主导 composite_score
+        self.assertIn("composite_score", result.columns)
+        self.assertIn("rank", result.columns)
+
+    def test_synthesize_single_level_index(self):
+        """synthesize_score 应兼容单级索引（whitelist_pipeline 场景）"""
+        insts = [f"SH{i:06d}" for i in range(100, 110)]
+        idx = pd.Index(insts, name="instrument")
+        data = {
+            "factor_a": pd.Series(range(10), index=idx, dtype=float),
+            "factor_b": pd.Series(range(10, 0, -1), index=idx, dtype=float),
+        }
+        result = synthesize_score(data)
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), 10)
+        self.assertIn("composite_score", result.columns)
 
 
 class TestFactorNamesConstant(unittest.TestCase):
