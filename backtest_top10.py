@@ -27,6 +27,8 @@ warnings.filterwarnings('ignore')
 import config as cfg
 from engine.pricing import PriceEngine
 from engine.backtest import BacktestEngine, create_backtest_engine
+from engine.risk_control import MaxDrawdownControl
+from engine.position_manager import DynamicPositionManager
 from engine.factor import FactorEngine, create_factor_engine, synthesize_daily_composite
 from engine.metrics import PerformanceAnalyzer, create_performance_analyzer
 from logging_config import setup_logging
@@ -56,12 +58,24 @@ def main():
 
     # 初始化引擎
     price_engine = PriceEngine()
+    risk_control = MaxDrawdownControl(
+        max_dd_threshold=0.20,
+        recovery_threshold=0.05,
+    )
+    position_manager = DynamicPositionManager(
+        top_n=3,
+        top_weight=0.30,
+        mid_weight=0.20,
+        tail_weight=0.10,
+    )
     backtest_engine = create_backtest_engine(
         initial_capital=INITIAL_CAPITAL,
         commission_rate=COMMISSION_RATE,
         slippage_rate=SLIPPAGE_RATE,
         min_trade_value=MIN_TRADE_VALUE,
-        lot_size=ASTOCK_LOT_SIZE
+        lot_size=ASTOCK_LOT_SIZE,
+        risk_control=risk_control,
+        position_manager=position_manager,
     )
     factor_engine = create_factor_engine()
     perf_analyzer = create_performance_analyzer(INITIAL_CAPITAL)
@@ -85,8 +99,9 @@ def main():
 
     # 步骤3: 运行回测
     logger.info(f"\n🚀 步骤3: 回测 (Top {TOP_K}, 持仓 {HOLD_DAYS} 天)...")
-    daily_value, trade_log = run_backtest(
-        adj_prices, scores, backtest_engine, TOP_K, HOLD_DAYS
+    daily_value, trade_log, rc_state = run_backtest(
+        adj_prices, scores, backtest_engine, TOP_K, HOLD_DAYS,
+        risk_control=risk_control, position_manager=position_manager
     )
 
     # 步骤4: 计算指标
@@ -94,6 +109,17 @@ def main():
     logger.info("-" * 70)
     metrics = perf_analyzer.analyze(daily_value, trade_log)
     logger.info(perf_analyzer.generate_report(metrics))
+
+    # 回撤控制摘要
+    if rc_state is not None:
+        summary = rc_state.get_summary()
+        logger.info("\n回撤控制")
+        logger.info("-" * 70)
+        logger.info("  历史最大回撤:  %.2f%%", summary['max_drawdown_pct'] * 100)
+        logger.info("  最终回撤:      %.2f%%", summary['drawdown_pct'] * 100)
+        logger.info("  最终仓位比例:  %.0f%%", summary['exposure'] * 100)
+        logger.info("  处于空仓状态:  %s", summary['is_in_cash'])
+        logger.info("  更新次数:      %d", summary['n_updates'])
 
     # 保存结果
     df = pd.DataFrame(daily_value)
@@ -148,7 +174,8 @@ def main():
         logger.info("  %15s: %+.2f%%", name, ret)
 
 
-def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
+def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5,
+                 risk_control=None, position_manager=None):
     """
     运行回测（兼容原接口）
 
@@ -158,9 +185,11 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
         engine: BacktestEngine 实例
         top_k: 每次选股数量
         hold_days: 持有天数
+        risk_control: MaxDrawdownControl 实例
+        position_manager: DynamicPositionManager 实例
 
     Returns:
-        (daily_value, trade_log)
+        (daily_value, trade_log, risk_control_state)
     """
     # 兼容 MultiIndex 和普通 DataFrame
     if hasattr(scores, 'index') and scores.index.names == ['datetime', 'instrument']:
@@ -170,7 +199,7 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
         scores = scores.set_index(['datetime', 'instrument']) if 'instrument' in scores.columns else scores
     else:
         logger.warning("无法获取 dates，回测跳过")
-        return [], []
+        return [], [], None
     all_dates = [d for d in all_dates if not pd.isna(d)]
 
     # 避免在拆分日执行交易
@@ -179,7 +208,7 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
         truncated = all_dates[:cutoff_idx]
         if len(truncated) < 2:
             logger.warning("截断后无足够交易日")
-            return [], []
+            return [], [], None
         all_dates = truncated
         logger.warning("避开拆分日 %s，回测截止至 %s", SPLIT_DATE_CURR.date(), all_dates[-1].date())
 
@@ -188,8 +217,9 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
     for (dt, inst), row in prices.iterrows():
         price_map[(dt, inst)] = {'open': row['$open'], 'close': row['$close']}
 
-    # 构建信号
+    # 构建信号和得分
     signals = {}
+    day_scores_map = {}  # {date_idx: {stock: composite_score}}
     for i, date in enumerate(all_dates):
         try:
             if hasattr(scores, 'index') and scores.index.names == ['datetime', 'instrument']:
@@ -199,7 +229,6 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
             day_scores = day_scores.dropna()
             if len(day_scores) >= top_k:
                 # 使用 engine 统一合成：横截面 Z-score + 等权
-                # day_scores 已是单日截面（index=instrument），构造 MultiIndex 传给 synthesize_daily_composite
                 day_scores_dict = {col: pd.Series(day_scores[col].values,
                                                   index=pd.MultiIndex.from_tuples(
                                                       [(all_dates[i], inst) for inst in day_scores.index],
@@ -209,12 +238,15 @@ def run_backtest(prices, scores, engine: BacktestEngine, top_k=10, hold_days=5):
                 if not synth_result.empty:
                     top_stocks = synth_result.head(top_k)['instrument'].tolist()
                     signals[i] = top_stocks
+                    # 保存每日得分用于仓位管理
+                    day_scores_map[i] = dict(zip(synth_result['instrument'], synth_result['composite_score']))
         except KeyError:
             continue
 
     # 运行回测
-    result = engine.run(all_dates, price_map, signals, hold_days, top_k)
-    return result.daily_value, result.trades
+    result = engine.run(all_dates, price_map, signals, hold_days, top_k,
+                        scores=day_scores_map)
+    return result.daily_value, result.trades, risk_control
 
 
 if __name__ == "__main__":

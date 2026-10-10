@@ -13,6 +13,8 @@ from typing import Dict, List, Tuple, Optional, Callable
 from dataclasses import dataclass, field
 import config as cfg
 from trading_rules import get_board, get_limit_pct, is_limit_up, is_limit_down
+from engine.risk_control import MaxDrawdownControl
+from engine.position_manager import DynamicPositionManager
 
 logger = logging.getLogger(__name__)
 
@@ -51,34 +53,41 @@ class BacktestResult:
 class BacktestEngine:
     """回测引擎"""
 
-    def __init__(self, 
+    def __init__(self,
                  initial_capital: float = cfg.BACKTEST_INITIAL_CAPITAL,
                  commission_rate: float = cfg.BACKTEST_COMMISSION_RATE,
                  slippage_rate: float = cfg.BACKTEST_SLIPPAGE_RATE,
                  min_trade_value: float = cfg.BACKTEST_MIN_TRADE_VALUE,
-                 lot_size: int = 100):
+                 lot_size: int = 100,
+                 risk_control: Optional[MaxDrawdownControl] = None,
+                 position_manager: Optional[DynamicPositionManager] = None):
         self.initial_capital = initial_capital
         self.commission_rate = commission_rate
         self.slippage_rate = slippage_rate
         self.min_trade_value = min_trade_value
         self.lot_size = lot_size
+        self.risk_control = risk_control
+        self.position_manager = position_manager
+        self._score_map: Dict[int, Dict[str, float]] = {}
 
     def run(self,
             dates: List[pd.Timestamp],
             price_map: Dict[Tuple, Dict],
             signals: Dict[int, List[str]],
             hold_days: int = 5,
-            top_k: int = 10) -> BacktestResult:
+            top_k: int = 10,
+            scores: Optional[Dict[int, Dict[str, float]]] = None) -> BacktestResult:
         """
         运行回测
-        
+
         Args:
             dates: 交易日列表
             price_map: 价格查找字典 {(date, stock): {'open': ..., 'close': ...}}
             signals: 每日选股信号 {date_idx: [stock_list]}
             hold_days: 持有天数
             top_k: 每次选股数量
-        
+            scores: 可选，每日每只股票的合成得分 {date_idx: {stock: score}}
+
         Returns:
             BacktestResult
         """
@@ -187,6 +196,10 @@ class BacktestEngine:
                 'cash': cash, 'positions': len(positions)
             })
 
+            # 回撤控制：更新净值曲线
+            if self.risk_control is not None:
+                self.risk_control.update(day_value)
+
             # 选股（T-1 信号）
             if i == 0:
                 continue
@@ -195,9 +208,35 @@ class BacktestEngine:
                 continue
             selected = signals[prev_idx]
 
-            # 调仓
+            # 调仓：计算当前可用总资金
             current_value = get_value(i, date)
-            alloc_per_stock = current_value / top_k
+
+            # 获取回撤控制的建议仓位比例
+            exposure = 1.0
+            if self.risk_control is not None:
+                exposure = self.risk_control.get_exposure()
+
+            # 使用动态仓位管理，或等权分配
+            alloc_per_stock: float
+            if (self.position_manager is not None and
+                    scores is not None and prev_idx in scores):
+                # 基于得分的动态分配
+                stock_scores = scores[prev_idx]
+                allocs = self.position_manager.compute_allocations(
+                    stocks=selected,
+                    scores=stock_scores,
+                    exposure=exposure,
+                )
+                # allocs 中每个 stock 的 allocation 是相对于 current_value 的比例
+                # 这里我们需要的是每只股票的资金量 = current_value * allocation
+                per_stock_value = {}
+                for stock, alloc_pct in allocs.items():
+                    per_stock_value[stock] = current_value * alloc_pct
+                alloc_per_stock_fn = lambda s: per_stock_value.get(s, 0.0)
+            else:
+                # 等权分配，乘以回撤暴露系数
+                alloc_per_stock = current_value * exposure / top_k
+                alloc_per_stock_fn = lambda s: alloc_per_stock
 
             # 卖出不在列表中的
             for stock in list(positions.keys()):
@@ -208,7 +247,8 @@ class BacktestEngine:
             for stock in selected:
                 if stock in positions:
                     continue
-                buy_stock(stock, date, i, alloc_per_stock)
+                target = alloc_per_stock_fn(stock)
+                buy_stock(stock, date, i, target)
 
         # 强制平仓
         last_date = dates[-1]
